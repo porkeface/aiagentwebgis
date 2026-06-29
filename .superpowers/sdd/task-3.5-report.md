@@ -201,7 +201,7 @@ git add backend/recommendation/__init__.py
 git commit -m "feat: TSP optimization - nearest neighbor + 2-opt improvement"
 ```
 
-**Expected Commit SHA:** (to be filled after commit)
+**Commit SHA:** `d0e235f`
 
 ---
 
