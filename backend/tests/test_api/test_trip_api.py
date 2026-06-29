@@ -5,11 +5,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
+from geoalchemy2.elements import WKBElement
 from httpx import AsyncClient
+from shapely.geometry import Point
 
 from app.api.v1.deps import get_current_user
 from app.database import get_session
 from app.main import app
+from app.models.poi import POI
 from app.models.trip import Trip, TripDay, TripDayPOI
 from app.schemas.trip import TripCreate
 
@@ -31,6 +34,21 @@ def _make_trip(**overrides):
     return trip
 
 
+def _make_mock_poi(poi_id: int, name: str = "POI", lng: float = 120.0, lat: float = 30.0):
+    """Create a mock POI with location."""
+    poi = MagicMock(spec=POI)
+    poi.id = poi_id
+    poi.name = name
+    poi.category = "景点"
+    poi.rating = 4.5
+    poi.address = "测试地址"
+    poi.tags = ["文化", "历史"]
+    # Create a real WKBElement for location
+    point = Point(lng, lat)
+    poi.location = WKBElement(point.wkb, srid=4326)
+    return poi
+
+
 def _make_trip_day(day_number=1, poi_count=0):
     """Create a mock TripDay with POIs."""
     day = MagicMock(spec=TripDay)
@@ -42,16 +60,18 @@ def _make_trip_day(day_number=1, poi_count=0):
 
     pois = []
     for i in range(poi_count):
-        poi = MagicMock(spec=TripDayPOI)
-        poi.id = i + 1
-        poi.trip_day_id = day.id
-        poi.poi_id = 100 + i
-        poi.sort_order = i
-        poi.arrival_time = "09:00"
-        poi.departure_time = "11:00"
-        poi.score = 4.5
-        poi.notes = None
-        pois.append(poi)
+        daypoi = MagicMock(spec=TripDayPOI)
+        daypoi.id = i + 1
+        daypoi.trip_day_id = day.id
+        daypoi.poi_id = 100 + i
+        daypoi.sort_order = i
+        daypoi.arrival_time = "09:00"
+        daypoi.departure_time = "11:00"
+        daypoi.score = 4.5
+        daypoi.notes = None
+        # Attach a mock POI with proper location
+        daypoi.poi = _make_mock_poi(100 + i, f"景点{i+1}", 120.0 + i * 0.01, 30.0 + i * 0.01)
+        pois.append(daypoi)
 
     day.pois = pois
     return day
