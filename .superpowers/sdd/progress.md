@@ -24,3 +24,4 @@ Task 5.3: complete (commits ba5330c..b0a0eed, review approved clean, Low: trivia
 Task 5.4: complete (commits b0a0eed..793ab9d, review approved clean, Low: v-for index key, fire-and-forget send)
 Task 5.5: complete (commits 793ab9d..b10a874, review approved clean, Minor: variable shadowing in agent.ts, plan_summary silent partial)
 Task 5.6: complete (commits b10a874..04bc823, review approved clean, Low: RouteData loosely typed, local interfaces for type safety)
+Task 5.7: complete (commits 04bc823..1f06e00, review approved after fix, Important: v-else never renders due to sibling ordering)

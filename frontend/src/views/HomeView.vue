@@ -1,18 +1,51 @@
 <script setup lang="ts">
+import MapView from '@/components/map/MapView.vue'
+import ChatPanel from '@/components/chat/ChatPanel.vue'
 </script>
 
 <template>
   <div class="home-view">
-    <h1>AI Travel Planner</h1>
-    <p>Welcome to the AI-powered travel planning assistant.</p>
+    <div class="home-view__map">
+      <MapView />
+    </div>
+    <div class="home-view__chat">
+      <ChatPanel />
+    </div>
   </div>
 </template>
 
 <style scoped>
 .home-view {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+.home-view__map {
+  flex: 0 0 60%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.home-view__chat {
+  flex: 0 0 40%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Responsive: stack vertically on mobile */
+@media (max-width: 767px) {
+  .home-view {
+    flex-direction: column;
+  }
+
+  .home-view__map {
+    flex: 0 0 50%;
+  }
+
+  .home-view__chat {
+    flex: 0 0 50%;
+  }
 }
 </style>

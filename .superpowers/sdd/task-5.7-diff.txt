@@ -1,0 +1,1677 @@
+diff --git a/backend/app/api/v1/trip.py b/backend/app/api/v1/trip.py
+index 9dc9363..949a7c7 100644
+--- a/backend/app/api/v1/trip.py
++++ b/backend/app/api/v1/trip.py
+@@ -1,13 +1,14 @@
+ """Trip CRUD API endpoints."""
+ 
+ from fastapi import APIRouter, Depends, HTTPException
++from geoalchemy2.shape import to_shape
+ from pydantic import BaseModel
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ from app.api.v1.deps import get_current_user
+ from app.database import get_session
+ from app.schemas.trip import TripCreate, TripDetailResponse, TripResponse
+ from app.services import trip_service
+ 
+ router = APIRouter(prefix="/api/v1/trips", tags=["Trip"])
+ 
+@@ -100,35 +101,45 @@ async def get_trip_endpoint(
+     trip = await trip_service.get_trip(
+         db=db,
+         trip_id=trip_id,
+         user_id=user_id,
+     )
+     if trip is None:
+         raise HTTPException(status_code=404, detail="Trip not found")
+ 
+     daily_plans = []
+     for day in trip.days:
+-        pois = [
+-            {
++        pois = []
++        for p in day.pois:
++            poi_obj = p.poi
++            if poi_obj and poi_obj.location:
++                point = to_shape(poi_obj.location)
++                lng = point.x
++                lat = point.y
++            else:
++                lng = None
++                lat = None
++            pois.append({
+                 "poi_id": p.poi_id,
+                 "sort_order": p.sort_order,
+                 "arrival_time": p.arrival_time,
+                 "departure_time": p.departure_time,
+                 "score": p.score,
+                 "notes": p.notes,
+-                "name": None,
+-                "category": None,
+-                "lng": None,
+-                "lat": None,
+-            }
+-            for p in day.pois
+-        ]
++                "name": poi_obj.name if poi_obj else None,
++                "category": poi_obj.category if poi_obj else None,
++                "lng": lng,
++                "lat": lat,
++                "rating": poi_obj.rating if poi_obj else None,
++                "address": poi_obj.address if poi_obj else None,
++                "tags": poi_obj.tags if poi_obj else [],
++            })
+         daily_plans.append({
+             "day_number": day.day_number,
+             "date": day.date.isoformat(),
+             "notes": day.notes,
+             "pois": pois,
+         })
+ 
+     return {
+         "success": True,
+         "data": {
+diff --git a/backend/app/models/trip.py b/backend/app/models/trip.py
+index 3096877..7b96c25 100644
+--- a/backend/app/models/trip.py
++++ b/backend/app/models/trip.py
+@@ -11,20 +11,21 @@ from sqlalchemy import (
+     Integer,
+     String,
+     Text,
+     func,
+ )
+ from sqlalchemy.orm import Mapped, mapped_column, relationship
+ 
+ from app.models.poi import Base
+ 
+ if TYPE_CHECKING:
++    from app.models.poi import POI
+     from app.models.user import User
+ 
+ 
+ class Trip(Base):
+     """A travel trip plan."""
+ 
+     __tablename__ = "trips"
+ 
+     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+     user_id: Mapped[int] = mapped_column(
+@@ -103,13 +104,14 @@ class TripDayPOI(Base):
+         index=True,
+     )
+     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+     arrival_time: Mapped[str] = mapped_column(String(10), nullable=True)
+     departure_time: Mapped[str] = mapped_column(String(10), nullable=True)
+     score: Mapped[float] = mapped_column(Float, nullable=True)
+     notes: Mapped[str] = mapped_column(Text, nullable=True)
+ 
+     # Relationships
+     trip_day: Mapped["TripDay"] = relationship("TripDay", back_populates="pois")
++    poi: Mapped["POI"] = relationship("POI")
+ 
+     def __repr__(self) -> str:
+         return f"<TripDayPOI(id={self.id}, poi_id={self.poi_id}, order={self.sort_order})>"
+diff --git a/backend/app/services/trip_service.py b/backend/app/services/trip_service.py
+index 9bad8cd..4d5a5f5 100644
+--- a/backend/app/services/trip_service.py
++++ b/backend/app/services/trip_service.py
+@@ -77,21 +77,21 @@ async def get_trip(
+         trip_id: ID of the trip.
+         user_id: ID of the authenticated user.
+ 
+     Returns:
+         Trip if found and owned by user, None otherwise.
+     """
+     stmt = (
+         select(Trip)
+         .where(Trip.id == trip_id, Trip.user_id == user_id)
+         .options(
+-            selectinload(Trip.days).selectinload(TripDay.pois),
++            selectinload(Trip.days).selectinload(TripDay.pois).selectinload(TripDayPOI.poi),
+         )
+     )
+     result = await db.execute(stmt)
+     return result.scalar_one_or_none()
+ 
+ 
+ async def list_trips(
+     db: AsyncSession,
+     user_id: int,
+     page: int = 1,
+diff --git a/frontend/package-lock.json b/frontend/package-lock.json
+index 3490aa5..0da6ccc 100644
+--- a/frontend/package-lock.json
++++ b/frontend/package-lock.json
+@@ -5,21 +5,22 @@
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "frontend",
+       "version": "0.0.0",
+       "dependencies": {
+         "@vue-leaflet/vue-leaflet": "^0.10.1",
+         "element-plus": "^2.14.2",
+         "leaflet": "^1.9.4",
+         "pinia": "^3.0.4",
+-        "vue": "^3.5.38"
++        "vue": "^3.5.38",
++        "vue-router": "^4.6.4"
+       },
+       "devDependencies": {
+         "@types/leaflet": "^1.9.21",
+         "@types/node": "^24.13.2",
+         "@vitejs/plugin-vue": "^6.0.7",
+         "@vue/tsconfig": "^0.9.1",
+         "typescript": "~6.0.2",
+         "vite": "^8.1.0",
+         "vue-tsc": "^3.3.5"
+       }
+@@ -1584,20 +1585,41 @@
+           "optional": true
+         }
+       }
+     },
+     "node_modules/vue-component-type-helpers": {
+       "version": "3.3.5",
+       "resolved": "https://registry.npmmirror.com/vue-component-type-helpers/-/vue-component-type-helpers-3.3.5.tgz",
+       "integrity": "sha512-Fe1jyPJoUGpJOYKOri44jduR7My4yYINOMJISuMAbmrs+L5LbIDUc8NTWZYY3EJLK0yPLuCmcd5zoCsE4k2/KA==",
+       "license": "MIT"
+     },
++    "node_modules/vue-router": {
++      "version": "4.6.4",
++      "resolved": "https://registry.npmmirror.com/vue-router/-/vue-router-4.6.4.tgz",
++      "integrity": "sha512-Hz9q5sa33Yhduglwz6g9skT8OBPii+4bFn88w6J+J4MfEo4KRRpmiNG/hHHkdbRFlLBOqxN8y8gf2Fb0MTUgVg==",
++      "license": "MIT",
++      "dependencies": {
++        "@vue/devtools-api": "^6.6.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/posva"
++      },
++      "peerDependencies": {
++        "vue": "^3.5.0"
++      }
++    },
++    "node_modules/vue-router/node_modules/@vue/devtools-api": {
++      "version": "6.6.4",
++      "resolved": "https://registry.npmmirror.com/@vue/devtools-api/-/devtools-api-6.6.4.tgz",
++      "integrity": "sha512-sGhTPMuXqZ1rVOk32RylztWkfXTRhuS7vgAKv0zjqk8gbsHkJ7xfFf+jbySxt7tWObEJwyKaHMikV/WGDiQm8g==",
++      "license": "MIT"
++    },
+     "node_modules/vue-tsc": {
+       "version": "3.3.5",
+       "resolved": "https://registry.npmmirror.com/vue-tsc/-/vue-tsc-3.3.5.tgz",
+       "integrity": "sha512-Rzh/G2MmNlMSAMTiQEjDrsb4dgB/jbtEM47rVN2NtidF1dfb/q4w4QvpQBtW5+y3y5H27Hjh7deVwk+YB02fNg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "@volar/typescript": "2.4.28",
+         "@vue/language-core": "3.3.5"
+       },
+diff --git a/frontend/package.json b/frontend/package.json
+index d87f331..efed368 100644
+--- a/frontend/package.json
++++ b/frontend/package.json
+@@ -6,21 +6,22 @@
+   "scripts": {
+     "dev": "vite",
+     "build": "vue-tsc -b && vite build",
+     "preview": "vite preview"
+   },
+   "dependencies": {
+     "@vue-leaflet/vue-leaflet": "^0.10.1",
+     "element-plus": "^2.14.2",
+     "leaflet": "^1.9.4",
+     "pinia": "^3.0.4",
+-    "vue": "^3.5.38"
++    "vue": "^3.5.38",
++    "vue-router": "^4.6.4"
+   },
+   "devDependencies": {
+     "@types/leaflet": "^1.9.21",
+     "@types/node": "^24.13.2",
+     "@vitejs/plugin-vue": "^6.0.7",
+     "@vue/tsconfig": "^0.9.1",
+     "typescript": "~6.0.2",
+     "vite": "^8.1.0",
+     "vue-tsc": "^3.3.5"
+   }
+diff --git a/frontend/src/App.vue b/frontend/src/App.vue
+index 388b05e..c048298 100644
+--- a/frontend/src/App.vue
++++ b/frontend/src/App.vue
+@@ -1,7 +1,6 @@
+ <script setup lang="ts">
+-import HelloWorld from './components/HelloWorld.vue'
+ </script>
+ 
+ <template>
+-  <HelloWorld />
++  <router-view />
+ </template>
+diff --git a/frontend/src/api/trip.ts b/frontend/src/api/trip.ts
+index d6dde80..3007ebc 100644
+--- a/frontend/src/api/trip.ts
++++ b/frontend/src/api/trip.ts
+@@ -1,63 +1,82 @@
+ import { request } from "./http";
+ import { getToken } from "./auth";
+-import type { Trip } from "../types";
++import type { Trip, TripDetail } from "../types";
+ 
+ export interface TripCreateData {
+   city: string;
+   days: number;
+   title?: string;
+ }
+ 
+ export interface TripUpdateData {
+   city?: string;
+   days?: number;
+   title?: string;
+   status?: string;
+ }
+ 
++/** Backend envelope shape: { success: boolean; data?: T } */
++interface Envelope<T> {
++  success: boolean;
++  data: T;
++}
++
++/** Backend paginated envelope: { success: boolean; data: { total: number; items: T[] } } */
++interface PagedEnvelope<T> {
++  success: boolean;
++  data: {
++    total: number;
++    items: T[];
++  };
++}
++
+ function authHeaders(): Record<string, string> {
+   const token = getToken();
+   if (token) {
+     return { Authorization: `Bearer ${token}` };
+   }
+   return {};
+ }
+ 
+ export async function createTrip(data: TripCreateData): Promise<Trip> {
+-  return request<Trip>("/trips", {
++  const res = await request<Envelope<Trip>>("/trips", {
+     method: "POST",
+     body: data,
+     headers: authHeaders(),
+   });
++  return res.data;
+ }
+ 
+ export async function listTrips(page = 1, size = 20): Promise<Trip[]> {
+   const query = new URLSearchParams({
+     page: String(page),
+     size: String(size),
+   });
+-  return request<Trip[]>(`/trips?${query.toString()}`, {
++  const res = await request<PagedEnvelope<Trip>>(`/trips?${query.toString()}`, {
+     headers: authHeaders(),
+   });
++  return res.data.items;
+ }
+ 
+-export async function getTrip(id: number): Promise<Trip> {
+-  return request<Trip>(`/trips/${id}`, {
++export async function getTrip(id: number): Promise<TripDetail> {
++  const res = await request<Envelope<TripDetail>>(`/trips/${id}`, {
+     headers: authHeaders(),
+   });
++  return res.data;
+ }
+ 
+ export async function updateTrip(id: number, data: TripUpdateData): Promise<Trip> {
+-  return request<Trip>(`/trips/${id}`, {
++  const res = await request<Envelope<Trip>>(`/trips/${id}`, {
+     method: "PATCH",
+     body: data,
+     headers: authHeaders(),
+   });
++  return res.data;
+ }
+ 
+ export async function deleteTrip(id: number): Promise<void> {
+-  return request<void>(`/trips/${id}`, {
++  await request<Envelope<{ deleted: boolean }>>(`/trips/${id}`, {
+     method: "DELETE",
+     headers: authHeaders(),
+   });
+ }
+diff --git a/frontend/src/components/chat/ChatPanel.vue b/frontend/src/components/chat/ChatPanel.vue
+index e018f37..3f97d80 100644
+--- a/frontend/src/components/chat/ChatPanel.vue
++++ b/frontend/src/components/chat/ChatPanel.vue
+@@ -41,23 +41,24 @@ function scrollToBottom(): void {
+ 
+ // ── Send Message ─────────────────────────────────────────────────────────────
+ function handleSend(): void {
+   const text = inputText.value.trim()
+   if (!text || isLoading.value) return
+ 
+   chatStore.sendMessage(text)
+   inputText.value = ''
+ }
+ 
+-function handleKeydown(event: KeyboardEvent): void {
+-  if (event.key === 'Enter' && !event.shiftKey) {
+-    event.preventDefault()
++function handleKeydown(event: Event | KeyboardEvent): void {
++  const e = event as KeyboardEvent
++  if (e.key === 'Enter' && !e.shiftKey) {
++    e.preventDefault()
+     handleSend()
+   }
+ }
+ 
+ // ── Clear Error ──────────────────────────────────────────────────────────────
+ function dismissError(): void {
+   chatStore.clearError()
+ }
+ </script>
+ 
+diff --git a/frontend/src/components/trip/DayCard.vue b/frontend/src/components/trip/DayCard.vue
+new file mode 100644
+index 0000000..af5e649
+--- /dev/null
++++ b/frontend/src/components/trip/DayCard.vue
+@@ -0,0 +1,385 @@
++<script setup lang="ts">
++import type { TripDayPOI, DayPlanDetail } from "@/types";
++
++// ── Props & Emits ──────────────────────────────────────────────────────────
++interface Props {
++  dayPlan: DayPlanDetail;
++  dayNumber: number;
++}
++
++const props = defineProps<Props>();
++
++const emit = defineEmits<{
++  selectPOI: [poi: TripDayPOI];
++}>();
++
++// ── Constants ───────────────────────────────────────────────────────────────
++const AVG_SPEED_KMH = 30;
++
++// ── Helpers ─────────────────────────────────────────────────────────────────
++
++/**
++ * Estimate travel duration in minutes from distance in km.
++ */
++function estimateDuration(distanceKm: number): number {
++  return Math.round((distanceKm / AVG_SPEED_KMH) * 60);
++}
++
++/**
++ * Format time range for display.
++ */
++function formatTimeRange(arrival: string | null, departure: string | null): string {
++  if (arrival && departure) {
++    return `${arrival} – ${departure}`;
++  }
++  if (arrival) return arrival;
++  return "—";
++}
++
++/**
++ * Calculate total distance for the day (sum of segment distances).
++ * Uses Haversine if segment data unavailable.
++ */
++function calculateTotalDistance(): number {
++  const pois = props.dayPlan.pois;
++  if (pois.length < 2) return 0;
++  let total = 0;
++  for (let i = 0; i < pois.length - 1; i++) {
++    total += haversineKm(pois[i], pois[i + 1]);
++  }
++  return total;
++}
++
++/**
++ * Haversine distance between two points.
++ */
++function haversineKm(a: TripDayPOI, b: TripDayPOI): number {
++  if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) return 0;
++  const R = 6371;
++  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
++  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
++  const aRad = (a.lat * Math.PI) / 180;
++  const bRad = (b.lat * Math.PI) / 180;
++  const x =
++    Math.sin(dLat / 2) ** 2 +
++    Math.cos(aRad) * Math.cos(bRad) * Math.sin(dLng / 2) ** 2;
++  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
++}
++
++// ── Computed-like derived values ────────────────────────────────────────────
++function getTotalDistance(): number {
++  return calculateTotalDistance();
++}
++
++function getTotalDuration(): number {
++  return estimateDuration(getTotalDistance());
++}
++
++function getPOIColor(index: number): string {
++  const colors = ["#1890ff", "#52c41a", "#fa8c16", "#a855f7"];
++  return colors[index % colors.length];
++}
++
++// ── POI Click ───────────────────────────────────────────────────────────────
++function onPOIClick(poi: TripDayPOI): void {
++  emit("selectPOI", poi);
++}
++</script>
++
++<template>
++  <div class="day-card">
++    <div class="day-header">
++      <div class="day-badge">
++        <span class="day-number">Day {{ dayNumber }}</span>
++      </div>
++      <div class="day-meta">
++        <span class="day-date">{{ dayPlan.date }}</span>
++        <span class="day-stats" v-if="dayPlan.pois.length > 1">
++          {{ getTotalDistance().toFixed(1) }} km · ~{{ getTotalDuration() }} min
++        </span>
++      </div>
++    </div>
++
++    <div class="poi-list" v-if="dayPlan.pois.length > 0">
++      <div
++        v-for="(poi, index) in dayPlan.pois"
++        :key="poi.poi_id"
++        class="poi-item"
++        :class="{ clickable: poi.lat != null && poi.lng != null }"
++        @click="onPOIClick(poi)"
++      >
++        <div class="poi-index" :style="{ backgroundColor: getPOIColor(index) }">
++          {{ index + 1 }}
++        </div>
++
++        <div class="poi-content">
++          <div class="poi-name">{{ poi.name || `POI #${poi.poi_id}` }}</div>
++          <div class="poi-category" v-if="poi.category">
++            <span class="category-tag">{{ poi.category }}</span>
++          </div>
++          <div class="poi-details">
++            <span class="poi-time" v-if="poi.arrival_time || poi.departure_time">
++              🕐 {{ formatTimeRange(poi.arrival_time, poi.departure_time) }}
++            </span>
++            <span class="poi-rating" v-if="poi.rating != null">
++              ★ {{ poi.rating.toFixed(1) }}
++            </span>
++            <span class="poi-score" v-if="poi.score != null">
++              Score: {{ poi.score.toFixed(1) }}
++            </span>
++          </div>
++          <div class="poi-address" v-if="poi.address">
++            📍 {{ poi.address }}
++          </div>
++          <div class="poi-tags" v-if="poi.tags && poi.tags.length > 0">
++            <span v-for="tag in poi.tags.slice(0, 3)" :key="tag" class="poi-tag">
++              {{ tag }}
++            </span>
++          </div>
++          <div class="poi-notes" v-if="poi.notes">
++            {{ poi.notes }}
++          </div>
++        </div>
++
++        <!-- Distance to next POI -->
++        <div
++          class="poi-distance"
++          v-if="index < dayPlan.pois.length - 1 && poi.lat != null && poi.lng != null && dayPlan.pois[index + 1].lat != null"
++        >
++          <span class="distance-label">
++            {{ haversineKm(poi, dayPlan.pois[index + 1]).toFixed(1) }} km
++          </span>
++          <span class="distance-duration">
++            ~{{ estimateDuration(haversineKm(poi, dayPlan.pois[index + 1])) }} min
++          </span>
++        </div>
++      </div>
++    </div>
++
++    <div class="empty-day" v-else>
++      No POIs planned for this day.
++    </div>
++
++    <div class="day-notes" v-if="dayPlan.notes">
++      📝 {{ dayPlan.notes }}
++    </div>
++  </div>
++</template>
++
++<style scoped>
++.day-card {
++  background: #fff;
++  border-radius: 12px;
++  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
++  overflow: hidden;
++  margin-bottom: 16px;
++}
++
++.day-header {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  padding: 16px 20px;
++  background: linear-gradient(135deg, #1890ff 0%, #52c41a 100%);
++  color: #fff;
++}
++
++.day-badge {
++  flex-shrink: 0;
++}
++
++.day-number {
++  display: inline-block;
++  background: rgba(255, 255, 255, 0.25);
++  padding: 6px 14px;
++  border-radius: 20px;
++  font-weight: 700;
++  font-size: 14px;
++}
++
++.day-meta {
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++}
++
++.day-date {
++  font-size: 14px;
++  font-weight: 500;
++}
++
++.day-stats {
++  font-size: 12px;
++  opacity: 0.9;
++}
++
++.poi-list {
++  padding: 16px 20px;
++}
++
++.poi-item {
++  display: flex;
++  gap: 12px;
++  padding: 12px 0;
++  border-bottom: 1px solid #f0f0f0;
++  transition: background-color 0.2s;
++}
++
++.poi-item:last-child {
++  border-bottom: none;
++}
++
++.poi-item.clickable {
++  cursor: pointer;
++}
++
++.poi-item.clickable:hover {
++  background-color: #f5f7fa;
++  margin: 0 -20px;
++  padding-left: 20px;
++  padding-right: 20px;
++  border-radius: 8px;
++}
++
++.poi-index {
++  flex-shrink: 0;
++  width: 32px;
++  height: 32px;
++  border-radius: 50%;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  color: #fff;
++  font-weight: 700;
++  font-size: 14px;
++}
++
++.poi-content {
++  flex: 1;
++  min-width: 0;
++}
++
++.poi-name {
++  font-size: 15px;
++  font-weight: 600;
++  color: #1a1a1a;
++  margin-bottom: 4px;
++}
++
++.poi-category {
++  margin-bottom: 6px;
++}
++
++.category-tag {
++  display: inline-block;
++  font-size: 11px;
++  color: #666;
++  background: #f0f0f0;
++  padding: 2px 8px;
++  border-radius: 10px;
++}
++
++.poi-details {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 12px;
++  font-size: 13px;
++  color: #666;
++  margin-bottom: 4px;
++}
++
++.poi-time {
++  color: #1890ff;
++}
++
++.poi-rating {
++  color: #fa8c16;
++}
++
++.poi-score {
++  color: #52c41a;
++}
++
++.poi-address {
++  font-size: 12px;
++  color: #999;
++  margin-bottom: 4px;
++}
++
++.poi-tags {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 6px;
++  margin-bottom: 4px;
++}
++
++.poi-tag {
++  font-size: 11px;
++  color: #1890ff;
++  background: rgba(24, 144, 255, 0.1);
++  padding: 2px 8px;
++  border-radius: 10px;
++}
++
++.poi-notes {
++  font-size: 12px;
++  color: #888;
++  font-style: italic;
++  margin-top: 4px;
++}
++
++.poi-distance {
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  padding: 8px 12px;
++  background: #f9f9f9;
++  border-radius: 8px;
++  font-size: 12px;
++  flex-shrink: 0;
++}
++
++.distance-label {
++  font-weight: 600;
++  color: #1890ff;
++}
++
++.distance-duration {
++  color: #999;
++  font-size: 11px;
++}
++
++.empty-day {
++  padding: 32px 20px;
++  text-align: center;
++  color: #999;
++  font-size: 14px;
++}
++
++.day-notes {
++  padding: 12px 20px;
++  background: #fffbe6;
++  border-top: 1px solid #ffe58f;
++  font-size: 13px;
++  color: #8c6d1f;
++}
++
++/* Responsive */
++@media (max-width: 768px) {
++  .day-header {
++    flex-direction: column;
++    align-items: flex-start;
++    gap: 8px;
++  }
++
++  .poi-item {
++    flex-wrap: wrap;
++  }
++
++  .poi-distance {
++    margin-left: 44px;
++    width: calc(100% - 44px);
++  }
++}
++</style>
+diff --git a/frontend/src/components/trip/TripTimeline.vue b/frontend/src/components/trip/TripTimeline.vue
+new file mode 100644
+index 0000000..3f9d4d5
+--- /dev/null
++++ b/frontend/src/components/trip/TripTimeline.vue
+@@ -0,0 +1,173 @@
++<script setup lang="ts">
++import type { TripDetail, TripDayPOI } from "@/types";
++import DayCard from "./DayCard.vue";
++
++// ── Props & Emits ──────────────────────────────────────────────────────────
++interface Props {
++  trip: TripDetail;
++}
++
++defineProps<Props>();
++
++const emit = defineEmits<{
++  selectPOI: [poi: TripDayPOI];
++}>();
++
++// ── POI Click ───────────────────────────────────────────────────────────────
++function onPOISelect(poi: TripDayPOI): void {
++  emit("selectPOI", poi);
++}
++</script>
++
++<template>
++  <div class="trip-timeline">
++    <div class="timeline-header" v-if="trip.daily_plans && trip.daily_plans.length > 0">
++      <h2 class="trip-title">{{ trip.city }} {{ trip.days }}日游</h2>
++      <p class="trip-subtitle">{{ trip.daily_plans.length }} 天行程</p>
++    </div>
++
++    <div class="timeline-body">
++      <div class="timeline-track">
++        <div class="timeline-line"></div>
++
++        <div
++          v-for="dayPlan in trip.daily_plans"
++          :key="dayPlan.day_number"
++          class="timeline-item"
++        >
++          <div class="timeline-marker">
++            <div class="marker-dot"></div>
++          </div>
++
++          <div class="timeline-content">
++            <DayCard :dayPlan="dayPlan" :dayNumber="dayPlan.day_number" @selectPOI="onPOISelect" />
++          </div>
++        </div>
++      </div>
++    </div>
++
++    <div class="timeline-empty" v-else>
++      <div class="empty-icon">📭</div>
++      <p>暂无行程数据</p>
++    </div>
++  </div>
++</template>
++
++<style scoped>
++.trip-timeline {
++  width: 100%;
++  height: 100%;
++  overflow-y: auto;
++  background: #f5f7fa;
++}
++
++.timeline-header {
++  padding: 24px 32px;
++  background: #fff;
++  border-bottom: 1px solid #e8e8e8;
++  position: sticky;
++  top: 0;
++  z-index: 10;
++}
++
++.trip-title {
++  font-size: 24px;
++  font-weight: 700;
++  color: #1a1a1a;
++  margin: 0 0 4px;
++}
++
++.trip-subtitle {
++  font-size: 14px;
++  color: #666;
++  margin: 0;
++}
++
++.timeline-body {
++  padding: 24px 32px;
++}
++
++.timeline-track {
++  position: relative;
++  padding-left: 32px;
++}
++
++.timeline-line {
++  position: absolute;
++  left: 12px;
++  top: 0;
++  bottom: 0;
++  width: 2px;
++  background: #d9d9d9;
++}
++
++.timeline-item {
++  position: relative;
++  margin-bottom: 24px;
++}
++
++.timeline-item:last-child {
++  margin-bottom: 0;
++}
++
++.timeline-marker {
++  position: absolute;
++  left: -32px;
++  top: 20px;
++  width: 24px;
++  height: 24px;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++}
++
++.marker-dot {
++  width: 12px;
++  height: 12px;
++  border-radius: 50%;
++  background: #1890ff;
++  border: 3px solid #fff;
++  box-shadow: 0 0 0 2px #1890ff;
++}
++
++.timeline-content {
++  background: transparent;
++}
++
++.timeline-empty {
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  padding: 64px 32px;
++  color: #999;
++}
++
++.empty-icon {
++  font-size: 48px;
++  margin-bottom: 16px;
++}
++
++/* Responsive */
++@media (max-width: 768px) {
++  .timeline-header {
++    padding: 16px 20px;
++  }
++
++  .trip-title {
++    font-size: 20px;
++  }
++
++  .timeline-body {
++    padding: 16px 20px;
++  }
++
++  .timeline-track {
++    padding-left: 24px;
++  }
++
++  .timeline-marker {
++    left: -24px;
++  }
++}
++</style>
+diff --git a/frontend/src/main.ts b/frontend/src/main.ts
+index e28c61c..1b36108 100644
+--- a/frontend/src/main.ts
++++ b/frontend/src/main.ts
+@@ -1,14 +1,16 @@
+ import { createApp } from 'vue'
+ import { createPinia } from 'pinia'
+ import ElementPlus from 'element-plus'
+ import 'element-plus/dist/index.css'
+ import 'leaflet/dist/leaflet.css'
+ import App from './App.vue'
++import router from './router'
+ import './style.css'
+ 
+ const app = createApp(App)
+ 
+ app.use(createPinia())
+ app.use(ElementPlus)
++app.use(router)
+ 
+ app.mount('#app')
+diff --git a/frontend/src/router/index.ts b/frontend/src/router/index.ts
+new file mode 100644
+index 0000000..9441e56
+--- /dev/null
++++ b/frontend/src/router/index.ts
+@@ -0,0 +1,28 @@
++import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
++
++const routes: RouteRecordRaw[] = [
++  {
++    path: "/",
++    name: "home",
++    component: () => import("@/views/HomeView.vue"),
++  },
++  {
++    path: "/trip/:id",
++    name: "trip-detail",
++    component: () => import("@/views/TripDetailView.vue"),
++    props: (route) => ({ id: Number(route.params.id) }),
++  },
++  {
++    path: "/:pathMatch(.*)*",
++    name: "not-found",
++    component: () => import("@/views/NotFoundView.vue"),
++  },
++];
++
++const router = createRouter({
++  history: createWebHistory(),
++  routes,
++  scrollBehavior: () => ({ top: 0 }),
++});
++
++export default router;
+diff --git a/frontend/src/stores/trip.ts b/frontend/src/stores/trip.ts
+index 53ccf97..106d4cb 100644
+--- a/frontend/src/stores/trip.ts
++++ b/frontend/src/stores/trip.ts
+@@ -1,26 +1,26 @@
+ import { defineStore } from "pinia";
+ import { ref, computed } from "vue";
+-import type { Trip } from "@/types";
++import type { Trip, TripDetail } from "@/types";
+ import {
+   listTrips,
+   getTrip,
+   createTrip as apiCreateTrip,
+   updateTrip as apiUpdateTrip,
+   deleteTrip as apiDeleteTrip,
+ } from "@/api/trip";
+ import type { TripCreateData, TripUpdateData } from "@/api/trip";
+ 
+ export const useTripStore = defineStore("trip", () => {
+   // ── State ──────────────────────────────────────────────────────────────────
+   const trips = ref<Trip[]>([]);
+-  const currentTrip = ref<Trip | null>(null);
++  const currentTrip = ref<TripDetail | null>(null);
+   const loading = ref(false);
+   const error = ref<string | null>(null);
+ 
+   // ── Getters ────────────────────────────────────────────────────────────────
+   const tripCount = computed(() => trips.value.length);
+ 
+   // ── Actions ────────────────────────────────────────────────────────────────
+   async function fetchTrips(page = 1, size = 20): Promise<void> {
+     loading.value = true;
+     error.value = null;
+@@ -46,40 +46,36 @@ export const useTripStore = defineStore("trip", () => {
+       loading.value = false;
+     }
+   }
+ 
+   async function createTrip(data: TripCreateData): Promise<Trip | null> {
+     loading.value = true;
+     error.value = null;
+     try {
+       const trip = await apiCreateTrip(data);
+       trips.value = [...trips.value, trip];
+-      currentTrip.value = trip;
+       return trip;
+     } catch (err: unknown) {
+       const message = err instanceof Error ? err.message : "Failed to create trip";
+       error.value = message;
+       return null;
+     } finally {
+       loading.value = false;
+     }
+   }
+ 
+   async function updateTrip(id: number, data: TripUpdateData): Promise<Trip | null> {
+     loading.value = true;
+     error.value = null;
+     try {
+       const updated = await apiUpdateTrip(id, data);
+       trips.value = trips.value.map((t) => (t.id === id ? updated : t));
+-      if (currentTrip.value?.id === id) {
+-        currentTrip.value = updated;
+-      }
+       return updated;
+     } catch (err: unknown) {
+       const message = err instanceof Error ? err.message : "Failed to update trip";
+       error.value = message;
+       return null;
+     } finally {
+       loading.value = false;
+     }
+   }
+ 
+@@ -99,27 +95,32 @@ export const useTripStore = defineStore("trip", () => {
+       return false;
+     } finally {
+       loading.value = false;
+     }
+   }
+ 
+   function clearError(): void {
+     error.value = null;
+   }
+ 
++  function clearCurrentTrip(): void {
++    currentTrip.value = null;
++  }
++
+   return {
+     // state
+     trips,
+     currentTrip,
+     loading,
+     error,
+     // getters
+     tripCount,
+     // actions
+     fetchTrips,
+     fetchTrip,
+     createTrip,
+     updateTrip,
+     deleteTrip,
+     clearError,
++    clearCurrentTrip,
+   };
+ });
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 8d182c9..39ecba9 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -4,57 +4,87 @@ export interface POI {
+   name: string;
+   category: string;
+   address: string | null;
+   lng: number;
+   lat: number;
+   rating: number;
+   review_count: number;
+   tags: string[];
+ }
+ 
+-// ── Trip ───────────────────────────────────────────────────────────────────────
++// ── Trip ─────────────────────────────────────────────────────────────────────
+ export interface Trip {
+   id: number;
+   city: string;
+   days: number;
+   status: string;
+   title: string;
+   created_at: string;
+ }
+ 
+-// ── Day Plan ───────────────────────────────────────────────────────────────────
++// ── Trip Day POI (in a daily plan) ────────────────────────────────────────────
++export interface TripDayPOI {
++  poi_id: number;
++  sort_order: number;
++  arrival_time: string | null;
++  departure_time: string | null;
++  score: number | null;
++  notes: string | null;
++  name: string | null;
++  category: string | null;
++  lng: number | null;
++  lat: number | null;
++  rating: number | null;
++  address: string | null;
++  tags: string[];
++}
++
++// ── Day Plan ─────────────────────────────────────────────────────────────────
+ export interface DayPlan {
+   day: number;
+   pois: POI[];
+   total_distance_km: number;
+ }
+ 
+-// ── Chat ───────────────────────────────────────────────────────────────────────
++// ── Day Plan Detail (from trip detail API) ────────────────────────────────────
++export interface DayPlanDetail {
++  day_number: number;
++  date: string;
++  notes: string | null;
++  pois: TripDayPOI[];
++}
++
++// ── Trip Detail (from GET /trips/:id) ─────────────────────────────────────────
++export interface TripDetail extends Trip {
++  daily_plans: DayPlanDetail[];
++}
++
++// ── Chat ─────────────────────────────────────────────────────────────────────
+ export interface ChatMessage {
+   role: "user" | "assistant";
+   content: string;
+   timestamp: string;
+ }
+ 
+-// ── SSE Event ──────────────────────────────────────────────────────────────────
++// ── SSE Event ────────────────────────────────────────────────────────────────
+ export type SSEEventType =
+   | "thinking"
+   | "tool_calling"
+   | "poi_result"
+   | "route_result"
+   | "plan_summary"
+   | "text"
+   | "error";
+ 
+ export interface SSEEvent {
+   type: SSEEventType;
+   data: unknown;
+   content?: string;
+ }
+ 
+-// ── Parsed Intent ──────────────────────────────────────────────────────────────
++// ── Parsed Intent ────────────────────────────────────────────────────────────
+ export interface ParsedIntent {
+   intent: string;
+   city: string | null;
+   days: number | null;
+   preferences: string[];
+ }
+diff --git a/frontend/src/views/HomeView.vue b/frontend/src/views/HomeView.vue
+new file mode 100644
+index 0000000..917479b
+--- /dev/null
++++ b/frontend/src/views/HomeView.vue
+@@ -0,0 +1,18 @@
++<script setup lang="ts">
++</script>
++
++<template>
++  <div class="home-view">
++    <h1>AI Travel Planner</h1>
++    <p>Welcome to the AI-powered travel planning assistant.</p>
++  </div>
++</template>
++
++<style scoped>
++.home-view {
++  max-width: 800px;
++  margin: 0 auto;
++  padding: 2rem;
++  text-align: center;
++}
++</style>
+diff --git a/frontend/src/views/NotFoundView.vue b/frontend/src/views/NotFoundView.vue
+new file mode 100644
+index 0000000..64a6e3c
+--- /dev/null
++++ b/frontend/src/views/NotFoundView.vue
+@@ -0,0 +1,18 @@
++<script setup lang="ts">
++</script>
++
++<template>
++  <div class="not-found-view">
++    <h1>404 - Page Not Found</h1>
++    <p>The page you are looking for does not exist.</p>
++    <router-link to="/">Go Home</router-link>
++  </div>
++</template>
++
++<style scoped>
++.not-found-view {
++  max-width: 800px;
++  margin: 4rem auto;
++  text-align: center;
++}
++</style>
+diff --git a/frontend/src/views/TripDetailView.vue b/frontend/src/views/TripDetailView.vue
+new file mode 100644
+index 0000000..baba902
+--- /dev/null
++++ b/frontend/src/views/TripDetailView.vue
+@@ -0,0 +1,373 @@
++<script setup lang="ts">
++import { onMounted, watch } from "vue";
++import { useRoute, useRouter } from "vue-router";
++import { ElMessage } from "element-plus";
++import type { TripDayPOI } from "@/types";
++import { useTripStore } from "@/stores/trip";
++import { useMapStore } from "@/stores/map";
++import TripTimeline from "@/components/trip/TripTimeline.vue";
++import MapView from "@/components/map/MapView.vue";
++
++// ── Store ───────────────────────────────────────────────────────────────────
++const tripStore = useTripStore();
++const mapStore = useMapStore();
++const route = useRoute();
++const router = useRouter();
++
++// ── Load Trip ───────────────────────────────────────────────────────────────
++async function loadTrip(): Promise<void> {
++  const tripId = Number(route.params.id);
++  if (isNaN(tripId)) {
++    ElMessage.error("无效的行程ID");
++    router.push("/");
++    return;
++  }
++
++  try {
++    await tripStore.fetchTrip(tripId);
++    if (tripStore.currentTrip) {
++      setupMapData();
++    } else {
++      ElMessage.error("行程不存在或已删除");
++      router.push("/");
++    }
++  } catch (err: unknown) {
++    const message = err instanceof Error ? err.message : "加载行程失败";
++    ElMessage.error(message);
++    router.push("/");
++  }
++}
++
++// ── Setup Map Data ──────────────────────────────────────────────────────────
++function setupMapData(): void {
++  const trip = tripStore.currentTrip;
++  if (!trip || !trip.daily_plans) return;
++
++  // Flatten all POIs from all days
++  const allPois = trip.daily_plans.flatMap((day) =>
++    day.pois
++      .filter((poi) => poi.lat != null && poi.lng != null)
++      .map((poi) => ({
++        id: poi.poi_id,
++        name: poi.name || `POI #${poi.poi_id}`,
++        category: poi.category || "",
++        address: poi.address,
++        lng: poi.lng!,
++        lat: poi.lat!,
++        rating: poi.rating || 0,
++        review_count: 0,
++        tags: poi.tags || [],
++      }))
++  );
++
++  mapStore.setPOIs(allPois);
++
++  // Setup routes for each day
++  const routes = trip.daily_plans
++    .filter((day) => day.pois.length > 0)
++    .map((day) => {
++      const dayPois = day.pois
++        .filter((poi) => poi.lat != null && poi.lng != null)
++        .map((poi) => ({
++          id: poi.poi_id,
++          name: poi.name || `POI #${poi.poi_id}`,
++          category: poi.category || "",
++          lng: poi.lng!,
++          lat: poi.lat!,
++          rating: poi.rating || 0,
++        }));
++
++      return {
++        day: day.day_number,
++        pois: dayPois,
++        total_distance_km: calculateDayDistance(dayPois),
++      };
++    });
++
++  mapStore.setRoutes(routes);
++}
++
++// ── Calculate Day Distance ──────────────────────────────────────────────────
++function calculateDayDistance(pois: { lat: number; lng: number }[]): number {
++  if (pois.length < 2) return 0;
++  let total = 0;
++  for (let i = 0; i < pois.length - 1; i++) {
++    total += haversineKm(pois[i], pois[i + 1]);
++  }
++  return total;
++}
++
++// ── Haversine Distance ──────────────────────────────────────────────────────
++function haversineKm(
++  a: { lat: number; lng: number },
++  b: { lat: number; lng: number }
++): number {
++  const R = 6371;
++  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
++  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
++  const aRad = (a.lat * Math.PI) / 180;
++  const bRad = (b.lat * Math.PI) / 180;
++  const x =
++    Math.sin(dLat / 2) ** 2 +
++    Math.cos(aRad) * Math.cos(bRad) * Math.sin(dLng / 2) ** 2;
++  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
++}
++
++// ── POI Selection Handler ───────────────────────────────────────────────────
++function onPOISelect(poi: TripDayPOI): void {
++  if (poi.lat == null || poi.lng == null) {
++    ElMessage.warning("该地点无坐标信息");
++    return;
++  }
++
++  const mapPoi = {
++    id: poi.poi_id,
++    name: poi.name || `POI #${poi.poi_id}`,
++    category: poi.category || "",
++    address: poi.address,
++    lng: poi.lng,
++    lat: poi.lat,
++    rating: poi.rating || 0,
++    review_count: 0,
++    tags: poi.tags || [],
++  };
++
++  mapStore.selectPOI(mapPoi);
++}
++
++// ── Watch for trip changes ──────────────────────────────────────────────────
++watch(
++  () => tripStore.currentTrip,
++  (newTrip) => {
++    if (newTrip) {
++      setupMapData();
++    }
++  }
++);
++
++// ── Lifecycle ───────────────────────────────────────────────────────────────
++onMounted(() => {
++  loadTrip();
++});
++</script>
++
++<template>
++  <div class="trip-detail-view">
++    <!-- Header -->
++    <header class="detail-header" v-if="tripStore.currentTrip">
++      <div class="header-content">
++        <button class="back-btn" @click="router.push('/')">
++          <span>←</span> 返回
++        </button>
++        <div class="header-title">
++          <h1>{{ tripStore.currentTrip.city }} {{ tripStore.currentTrip.days }}日游</h1>
++          <p class="header-meta">
++            创建于 {{ new Date(tripStore.currentTrip.created_at).toLocaleDateString() }}
++          </p>
++        </div>
++      </div>
++    </header>
++
++    <!-- Loading State -->
++    <div class="loading-container" v-if="tripStore.loading">
++      <div class="loading-spinner"></div>
++      <p>加载行程中...</p>
++    </div>
++
++    <!-- Main Content -->
++    <main class="detail-content" v-if="tripStore.currentTrip && !tripStore.loading">
++      <aside class="timeline-panel">
++        <TripTimeline :trip="tripStore.currentTrip" @selectPOI="onPOISelect" />
++      </aside>
++
++      <section class="map-panel">
++        <MapView />
++      </section>
++    </main>
++
++    <!-- Error State -->
++    <div class="error-container" v-if="tripStore.error">
++      <div class="error-icon">⚠️</div>
++      <p>{{ tripStore.error }}</p>
++      <button class="retry-btn" @click="loadTrip">重试</button>
++    </div>
++  </div>
++</template>
++
++<style scoped>
++.trip-detail-view {
++  display: flex;
++  flex-direction: column;
++  height: 100vh;
++  background: #f5f7fa;
++}
++
++/* Header */
++.detail-header {
++  background: #fff;
++  border-bottom: 1px solid #e8e8e8;
++  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
++  z-index: 100;
++}
++
++.header-content {
++  display: flex;
++  align-items: center;
++  gap: 20px;
++  padding: 16px 32px;
++}
++
++.back-btn {
++  background: #f0f0f0;
++  border: none;
++  padding: 8px 16px;
++  border-radius: 6px;
++  cursor: pointer;
++  font-size: 14px;
++  color: #666;
++  transition: all 0.2s;
++}
++
++.back-btn:hover {
++  background: #e0e0e0;
++  color: #1890ff;
++}
++
++.header-title {
++  flex: 1;
++}
++
++.header-title h1 {
++  font-size: 24px;
++  font-weight: 700;
++  color: #1a1a1a;
++  margin: 0 0 4px;
++}
++
++.header-meta {
++  font-size: 13px;
++  color: #999;
++  margin: 0;
++}
++
++/* Loading */
++.loading-container {
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  flex: 1;
++  gap: 16px;
++  color: #999;
++}
++
++.loading-spinner {
++  width: 40px;
++  height: 40px;
++  border: 3px solid #f3f3f3;
++  border-top: 3px solid #1890ff;
++  border-radius: 50%;
++  animation: spin 1s linear infinite;
++}
++
++@keyframes spin {
++  0% {
++    transform: rotate(0deg);
++  }
++  100% {
++    transform: rotate(360deg);
++  }
++}
++
++/* Main Content */
++.detail-content {
++  display: flex;
++  flex: 1;
++  overflow: hidden;
++}
++
++.timeline-panel {
++  width: 50%;
++  overflow-y: auto;
++  background: #f5f7fa;
++  border-right: 1px solid #e8e8e8;
++}
++
++.map-panel {
++  width: 50%;
++  position: relative;
++}
++
++/* Error */
++.error-container {
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  flex: 1;
++  gap: 16px;
++  color: #666;
++}
++
++.error-icon {
++  font-size: 48px;
++}
++
++.retry-btn {
++  background: #1890ff;
++  color: #fff;
++  border: none;
++  padding: 10px 24px;
++  border-radius: 6px;
++  cursor: pointer;
++  font-size: 14px;
++  transition: background 0.2s;
++}
++
++.retry-btn:hover {
++  background: #40a9ff;
++}
++
++/* Responsive */
++@media (max-width: 1024px) {
++  .header-content {
++    padding: 16px 20px;
++  }
++
++  .header-title h1 {
++    font-size: 20px;
++  }
++
++  .detail-content {
++    flex-direction: column;
++  }
++
++  .timeline-panel {
++    width: 100%;
++    height: 50%;
++    border-right: none;
++    border-bottom: 1px solid #e8e8e8;
++  }
++
++  .map-panel {
++    width: 100%;
++    height: 50%;
++  }
++}
++
++@media (max-width: 768px) {
++  .header-content {
++    padding: 12px 16px;
++    gap: 12px;
++  }
++
++  .header-title h1 {
++    font-size: 18px;
++  }
++
++  .back-btn {
++    padding: 6px 12px;
++    font-size: 13px;
++  }
++}
++</style>
+diff --git a/frontend/tsconfig.app.json b/frontend/tsconfig.app.json
+index 5c750c5..a7ee20b 100644
+--- a/frontend/tsconfig.app.json
++++ b/frontend/tsconfig.app.json
+@@ -1,14 +1,19 @@
+ {
+   "extends": "@vue/tsconfig/tsconfig.dom.json",
+   "compilerOptions": {
+     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+     "types": ["vite/client"],
++    "baseUrl": ".",
++    "paths": {
++      "@/*": ["./src/*"]
++    },
++    "ignoreDeprecations": "6.0",
+ 
+     /* Linting */
+     "noUnusedLocals": true,
+     "noUnusedParameters": true,
+     "erasableSyntaxOnly": true,
+     "noFallthroughCasesInSwitch": true
+   },
+   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
+ }
+diff --git a/frontend/vite.config.ts b/frontend/vite.config.ts
+index bbcf80c..77deaf0 100644
+--- a/frontend/vite.config.ts
++++ b/frontend/vite.config.ts
+@@ -1,7 +1,13 @@
+ import { defineConfig } from 'vite'
+ import vue from '@vitejs/plugin-vue'
++import { fileURLToPath, URL } from 'node:url'
+ 
+ // https://vite.dev/config/
+ export default defineConfig({
+   plugins: [vue()],
++  resolve: {
++    alias: {
++      '@': fileURLToPath(new URL('./src', import.meta.url)),
++    },
++  },
+ })
