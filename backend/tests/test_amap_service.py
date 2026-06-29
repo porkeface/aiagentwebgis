@@ -289,3 +289,129 @@ class TestPlanRoute:
         assert "direction/driving" in url
         assert result["distance_km"] == pytest.approx(5.0)
         assert result["duration_min"] == pytest.approx(10.0)
+
+    async def test_plan_route_invalid_mode_raises(
+        self, service: AmapService
+    ) -> None:
+        """plan_route with invalid mode must raise ValueError before calling API."""
+        with pytest.raises(ValueError, match="Invalid mode"):
+            await service.plan_route(
+                origin=(116.397428, 39.90923),
+                destination=(116.400, 39.912),
+                mode="flying",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Error-path / edge-case tests (H4)
+# ---------------------------------------------------------------------------
+
+
+class TestErrorPaths:
+    """H4: error-path tests that were missing in the first implementation."""
+
+    async def test_api_business_error_raises(
+        self, service: AmapService
+    ) -> None:
+        """API returns status != '1' (business-level error) must raise ValueError."""
+        mock_data = {
+            "status": "0",
+            "info": "INVALID_USER_KEY",
+            "infocode": "10001",
+        }
+
+        mock_client = MagicMock(spec=httpx.AsyncClient)
+        mock_client.get = AsyncMock(return_value=_mock_response(mock_data))
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            with pytest.raises(ValueError, match="INVALID_USER_KEY"):
+                await service.search_pois(city="北京", keyword="故宫")
+
+    async def test_http_non_200_raises(
+        self, service: AmapService
+    ) -> None:
+        """HTTP non-200 response must raise httpx.HTTPStatusError via raise_for_status."""
+        mock_response = _mock_response(
+            json_data={"error": "Internal Server Error"},
+            status_code=500,
+        )
+
+        mock_client = MagicMock(spec=httpx.AsyncClient)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            with pytest.raises(httpx.HTTPStatusError):
+                await service.search_pois(city="北京", keyword="故宫")
+
+    async def test_reverse_geocode_municipality_city_is_list(
+        self, service: AmapService
+    ) -> None:
+        """reverse_geocode for a direct-administered municipality (city=[]) must
+        fall back to province."""
+        mock_data = {
+            "status": "1",
+            "info": "OK",
+            "regeocode": {
+                "formatted_address": "上海市黄浦区人民广场",
+                "addressComponent": {
+                    "province": "上海市",
+                    "city": [],  # Amap returns [] for municipalities
+                    "district": "黄浦区",
+                },
+            },
+        }
+
+        mock_client = MagicMock(spec=httpx.AsyncClient)
+        mock_client.get = AsyncMock(return_value=_mock_response(mock_data))
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service.reverse_geocode(121.473701, 31.230431)
+
+        assert result["city"] == "上海市"
+        assert result["address"] == "上海市黄浦区人民广场"
+
+    async def test_geocode_parse_error_raises(
+        self, service: AmapService
+    ) -> None:
+        """geocode with malformed location must raise ValueError with cause."""
+        mock_data = {
+            "status": "1",
+            "count": "1",
+            "info": "OK",
+            "geocodes": [
+                {
+                    "formatted_address": "某地",
+                    "location": "not_a_number,also_not",  # unparseable
+                },
+            ],
+        }
+
+        mock_client = MagicMock(spec=httpx.AsyncClient)
+        mock_client.get = AsyncMock(return_value=_mock_response(mock_data))
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            with pytest.raises(ValueError, match="Failed to parse geocode result"):
+                await service.geocode("某地")
+
+
+# ---------------------------------------------------------------------------
+# Context manager
+# ---------------------------------------------------------------------------
+
+
+class TestContextManager:
+    """H2: async context manager protocol."""
+
+    async def test_async_context_manager(self, api_key: str) -> None:
+        """AmapService must support `async with` and close client on exit."""
+        mock_client = MagicMock(spec=httpx.AsyncClient)
+        mock_client.is_closed = False
+        mock_client.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            async with AmapService(api_key=api_key) as svc:
+                # Force client creation so __aexit__ must close it
+                svc._client = mock_client
+
+        # After exiting the block, aclose must have been awaited exactly once
+        mock_client.aclose.assert_awaited_once()

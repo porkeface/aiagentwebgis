@@ -12,6 +12,8 @@ from typing import Any
 
 AMAP_BASE_URL = "https://restapi.amap.com/v3"
 
+VALID_ROUTE_MODES = frozenset({"walking", "driving", "bicycling", "transit"})
+
 
 class AmapService:
     """Async client for the Amap (Gaode) REST API."""
@@ -19,6 +21,18 @@ class AmapService:
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
         self._client: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> "AmapService":
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> bool:
+        await self.close()
+        return False
 
     def _get_client(self) -> httpx.AsyncClient:
         """Lazily create and return the shared httpx.AsyncClient."""
@@ -146,14 +160,15 @@ class AmapService:
         if not geocodes:
             raise ValueError(f"No geocode result for address: {address}")
 
-        location_str = geocodes[0].get("location", "")
-        if not location_str or "," not in location_str:
-            raise ValueError(f"Invalid location in geocode response: {location_str!r}")
-
-        parts = location_str.split(",")
-        lng = float(parts[0])
-        lat = float(parts[1])
-        return (lng, lat)
+        try:
+            loc = geocodes[0]["location"].split(",")
+            lng = float(loc[0])
+            lat = float(loc[1])
+            return (lng, lat)
+        except (KeyError, IndexError, ValueError) as e:
+            raise ValueError(
+                f"Failed to parse geocode result for '{address}': {e}"
+            ) from e
 
     async def reverse_geocode(
         self, lng: float, lat: float
@@ -203,6 +218,11 @@ class AmapService:
             - duration_min: Total duration in minutes.
             - polyline: Semicolon-separated coordinate string.
         """
+        if mode not in VALID_ROUTE_MODES:
+            raise ValueError(
+                f"Invalid mode: {mode}. Must be one of {sorted(VALID_ROUTE_MODES)}"
+            )
+
         params = {
             "origin": f"{origin[0]},{origin[1]}",
             "destination": f"{destination[0]},{destination[1]}",
