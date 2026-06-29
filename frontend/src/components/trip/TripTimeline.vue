@@ -21,32 +21,34 @@ function onPOISelect(poi: TripDayPOI): void {
 
 <template>
   <div class="trip-timeline">
-    <div class="timeline-header" v-if="trip.daily_plans && trip.daily_plans.length > 0">
-      <h2 class="trip-title">{{ trip.city }} {{ trip.days }}日游</h2>
-      <p class="trip-subtitle">{{ trip.daily_plans.length }} 天行程</p>
-    </div>
+    <template v-if="trip.daily_plans && trip.daily_plans.length > 0">
+      <div class="timeline-header">
+        <h2 class="trip-title">{{ trip.city }} {{ trip.days }}日游</h2>
+        <p class="trip-subtitle">{{ trip.daily_plans.length }} 天行程</p>
+      </div>
 
-    <div class="timeline-body">
-      <div class="timeline-track">
-        <div class="timeline-line"></div>
+      <div class="timeline-body">
+        <div class="timeline-track">
+          <div class="timeline-line"></div>
 
-        <div
-          v-for="dayPlan in trip.daily_plans"
-          :key="dayPlan.day_number"
-          class="timeline-item"
-        >
-          <div class="timeline-marker">
-            <div class="marker-dot"></div>
-          </div>
+          <div
+            v-for="dayPlan in trip.daily_plans"
+            :key="dayPlan.day_number"
+            class="timeline-item"
+          >
+            <div class="timeline-marker">
+              <div class="marker-dot"></div>
+            </div>
 
-          <div class="timeline-content">
-            <DayCard :dayPlan="dayPlan" :dayNumber="dayPlan.day_number" @selectPOI="onPOISelect" />
+            <div class="timeline-content">
+              <DayCard :dayPlan="dayPlan" :dayNumber="dayPlan.day_number" @selectPOI="onPOISelect" />
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </template>
 
-    <div class="timeline-empty" v-else>
+    <div v-else class="timeline-empty">
       <div class="empty-icon">📭</div>
       <p>暂无行程数据</p>
     </div>
