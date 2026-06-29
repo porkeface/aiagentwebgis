@@ -25,3 +25,4 @@ Task 5.4: complete (commits b0a0eed..793ab9d, review approved clean, Low: v-for 
 Task 5.5: complete (commits 793ab9d..b10a874, review approved clean, Minor: variable shadowing in agent.ts, plan_summary silent partial)
 Task 5.6: complete (commits b10a874..04bc823, review approved clean, Low: RouteData loosely typed, local interfaces for type safety)
 Task 5.7: complete (commits 04bc823..1f06e00, review approved after fix, Important: v-else never renders due to sibling ordering)
+Task 5.8: complete (commits 1f06e00..7385ba3, review approved clean, Low: redundant 100vh, missing box-sizing)
