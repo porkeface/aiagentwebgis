@@ -5,6 +5,7 @@ import { latLngBounds } from 'leaflet'
 import type { POI } from '@/types'
 import { useMapStore } from '@/stores/map'
 import PoiMarker from './PoiMarker.vue'
+import RouteLayer from './RouteLayer.vue'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const DEFAULT_CENTER: [number, number] = [39.9, 116.4] // Beijing [lat, lng]
@@ -15,6 +16,7 @@ const mapStore = useMapStore()
 
 // ── Reactive State ───────────────────────────────────────────────────────────
 const pois = computed(() => mapStore.pois)
+const routes = computed(() => mapStore.routes)
 const leafletMap = shallowRef<L.Map | null>(null)
 
 // ── Computed: center from store or default ───────────────────────────────────
@@ -47,6 +49,33 @@ watch(
   },
   { deep: true }
 )
+
+// ── Auto-fit bounds when routes change ───────────────────────────────────────
+watch(
+  routes,
+  (newRoutes) => {
+    const map = leafletMap.value
+    if (!map || !newRoutes.length) return
+    fitBoundsFromRoutes(newRoutes)
+  },
+  { deep: true }
+)
+
+/**
+ * Fit map bounds to contain all POIs from all routes with padding.
+ */
+function fitBoundsFromRoutes(routeList: { pois?: { lat: number; lng: number }[] }[]): void {
+  const allPois = routeList.flatMap((r) => r.pois ?? [])
+  if (allPois.length === 0) return
+
+  const lngs = allPois.map((p) => p.lng)
+  const lats = allPois.map((p) => p.lat)
+  const bounds = latLngBounds(
+    [Math.min(...lats), Math.min(...lngs)],
+    [Math.max(...lats), Math.max(...lngs)]
+  )
+  leafletMap.value?.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 })
+}
 
 /**
  * Fit map bounds to contain all POIs with padding.
@@ -84,6 +113,8 @@ function onPoiSelect(poi: POI): void {
         layer-type="base"
         name="Amap"
       />
+
+      <RouteLayer />
 
       <PoiMarker
         v-for="(poi, index) in pois"
