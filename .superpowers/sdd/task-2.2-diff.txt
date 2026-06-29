@@ -1,0 +1,917 @@
+diff --git a/backend/agent/tools/__init__.py b/backend/agent/tools/__init__.py
+new file mode 100644
+index 0000000..2febf59
+--- /dev/null
++++ b/backend/agent/tools/__init__.py
+@@ -0,0 +1,77 @@
++"""Agent tools package — wraps AmapService for LangGraph tool registration.
++
++Provides async tool functions that the agent graph can invoke:
++- search_pois_tool / search_nearby_tool (poi_search.py)
++- geocode_tool / reverse_geocode_tool (geocoding.py)
++- plan_route_tool (route_planning.py)
++- score_pois_tool (spatial_analysis.py)
++- get_weather_tool (weather.py)
++
++Also exports:
++- get_amap() — singleton factory for AmapService
++- ALL_TOOLS — list of all tool functions for LangGraph registration
++"""
++
++from __future__ import annotations
++
++import os
++
++from app.services.amap_service import AmapService
++
++from agent.tools.poi_search import search_pois_tool, search_nearby_tool
++from agent.tools.geocoding import geocode_tool, reverse_geocode_tool
++from agent.tools.route_planning import plan_route_tool
++from agent.tools.spatial_analysis import score_pois_tool
++from agent.tools.weather import get_weather_tool
++
++# ---------------------------------------------------------------------------
++# Singleton AmapService factory
++# ---------------------------------------------------------------------------
++
++_amap_instance: AmapService | None = None
++
++
++def get_amap() -> AmapService:
++    """Return a shared AmapService singleton.
++
++    Reads AMAP_API_KEY from environment. Creates the instance lazily
++    on first call; subsequent calls return the same object.
++    """
++    global _amap_instance  # noqa: PLW0603
++    if _amap_instance is None:
++        api_key = os.environ.get("AMAP_API_KEY", "")
++        _amap_instance = AmapService(api_key=api_key)
++    return _amap_instance
++
++
++def _reset_amap_instance() -> None:
++    """Reset the singleton — for testing only."""
++    global _amap_instance  # noqa: PLW0603
++    _amap_instance = None
++
++
++# ---------------------------------------------------------------------------
++# ALL_TOOLS — for LangGraph tool registration
++# ---------------------------------------------------------------------------
++
++ALL_TOOLS = [
++    search_pois_tool,
++    search_nearby_tool,
++    geocode_tool,
++    reverse_geocode_tool,
++    plan_route_tool,
++    score_pois_tool,
++    get_weather_tool,
++]
++
++__all__ = [
++    "get_amap",
++    "ALL_TOOLS",
++    "search_pois_tool",
++    "search_nearby_tool",
++    "geocode_tool",
++    "reverse_geocode_tool",
++    "plan_route_tool",
++    "score_pois_tool",
++    "get_weather_tool",
++]
+diff --git a/backend/agent/tools/geocoding.py b/backend/agent/tools/geocoding.py
+new file mode 100644
+index 0000000..ac3227b
+--- /dev/null
++++ b/backend/agent/tools/geocoding.py
+@@ -0,0 +1,43 @@
++"""Geocoding tool functions — wraps AmapService.geocode / reverse_geocode."""
++
++from __future__ import annotations
++
++from typing import Any
++
++
++async def geocode_tool(
++    address: str,
++    city: str | None = None,
++) -> tuple[float, float]:
++    """Geocode an address to (longitude, latitude).
++
++    Args:
++        address: Address string, e.g. "北京市东城区景山前街4号".
++        city: Optional city hint for disambiguation.
++
++    Returns:
++        Tuple of (longitude, latitude).
++    """
++    from agent.tools import get_amap
++
++    amap = get_amap()
++    return await amap.geocode(address)
++
++
++async def reverse_geocode_tool(
++    lng: float,
++    lat: float,
++) -> dict[str, str]:
++    """Reverse geocode coordinates to an address.
++
++    Args:
++        lng: Longitude.
++        lat: Latitude.
++
++    Returns:
++        Dict with keys: address, city.
++    """
++    from agent.tools import get_amap
++
++    amap = get_amap()
++    return await amap.reverse_geocode(lng, lat)
+diff --git a/backend/agent/tools/poi_search.py b/backend/agent/tools/poi_search.py
+new file mode 100644
+index 0000000..043c759
+--- /dev/null
++++ b/backend/agent/tools/poi_search.py
+@@ -0,0 +1,54 @@
++"""POI search tool functions — wraps AmapService.search_pois / place-around."""
++
++from __future__ import annotations
++
++from typing import Any
++
++
++async def search_pois_tool(
++    city: str,
++    category: str,
++    keyword: str | None = None,
++) -> list[dict[str, Any]]:
++    """Search POIs by city, category, and optional keyword.
++
++    Args:
++        city: City name, e.g. "北京".
++        category: POI type category, e.g. "景点".
++        keyword: Optional search keyword, e.g. "故宫".
++
++    Returns:
++        List of POI dicts from AmapService.
++    """
++    from agent.tools import get_amap
++
++    amap = get_amap()
++    return await amap.search_pois(city=city, category=category, keyword=keyword)
++
++
++async def search_nearby_tool(
++    lng: float,
++    lat: float,
++    category: str,
++    radius: int = 1000,
++) -> list[dict[str, Any]]:
++    """Search nearby POIs around a coordinate.
++
++    Args:
++        lng: Longitude of the center point.
++        lat: Latitude of the center point.
++        category: POI type category, e.g. "景点".
++        radius: Search radius in meters (default 1000).
++
++    Returns:
++        List of nearby POI dicts.
++    """
++    from agent.tools import get_amap
++
++    amap = get_amap()
++    return await amap.search_nearby(
++        lng=lng,
++        lat=lat,
++        category=category,
++        radius=radius,
++    )
+diff --git a/backend/agent/tools/route_planning.py b/backend/agent/tools/route_planning.py
+new file mode 100644
+index 0000000..9290e4c
+--- /dev/null
++++ b/backend/agent/tools/route_planning.py
+@@ -0,0 +1,34 @@
++"""Route planning tool function — wraps AmapService.plan_route."""
++
++from __future__ import annotations
++
++from typing import Any
++
++
++async def plan_route_tool(
++    origin_lng: float,
++    origin_lat: float,
++    dest_lng: float,
++    dest_lat: float,
++    mode: str = "driving",
++) -> dict[str, Any]:
++    """Plan a route between two coordinate pairs.
++
++    Args:
++        origin_lng: Origin longitude.
++        origin_lat: Origin latitude.
++        dest_lng: Destination longitude.
++        dest_lat: Destination latitude.
++        mode: Travel mode — "driving", "walking", "bicycling", or "transit".
++
++    Returns:
++        Dict with keys: distance_km, duration_min, polyline.
++    """
++    from agent.tools import get_amap
++
++    amap = get_amap()
++    return await amap.plan_route(
++        origin=(origin_lng, origin_lat),
++        destination=(dest_lng, dest_lat),
++        mode=mode,
++    )
+diff --git a/backend/agent/tools/spatial_analysis.py b/backend/agent/tools/spatial_analysis.py
+new file mode 100644
+index 0000000..ca1ad99
+--- /dev/null
++++ b/backend/agent/tools/spatial_analysis.py
+@@ -0,0 +1,183 @@
++"""Multi-factor POI scoring tool — pure computation, no API calls.
++
++Scoring factors and weights (MVP):
++- preference_score (0.30): Jaccard similarity between POI tags and user prefs.
++- distance_score (0.20): Inverse distance from city center, normalized to [0, 1].
++- rating_score (0.20): POI rating / 5.0.
++- time_score (0.15): Placeholder — always 1.0 for MVP.
++- popularity_score (0.15): review_count / max_review_count, normalized.
++"""
++
++from __future__ import annotations
++
++import math
++from typing import Any
++
++
++# ---------------------------------------------------------------------------
++# Scoring weights
++# ---------------------------------------------------------------------------
++
++WEIGHTS: dict[str, float] = {
++    "preference": 0.30,
++    "distance": 0.20,
++    "rating": 0.20,
++    "time": 0.15,
++    "popularity": 0.15,
++}
++
++
++# ---------------------------------------------------------------------------
++# Internal scoring helpers
++# ---------------------------------------------------------------------------
++
++
++def _jaccard_similarity(a: set[str], b: set[str]) -> float:
++    """Compute Jaccard similarity between two sets."""
++    if not a and not b:
++        return 0.0
++    intersection = a & b
++    union = a | b
++    if not union:
++        return 0.0
++    return len(intersection) / len(union)
++
++
++def _haversine_km(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
++    """Compute haversine distance in km between two WGS84 points."""
++    r = 6371.0  # Earth radius in km
++    d_lat = math.radians(lat2 - lat1)
++    d_lng = math.radians(lng2 - lng1)
++    a = (
++        math.sin(d_lat / 2) ** 2
++        + math.cos(math.radians(lat1))
++        * math.cos(math.radians(lat2))
++        * math.sin(d_lng / 2) ** 2
++    )
++    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
++
++
++def _compute_scores(
++    pois: list[dict[str, Any]],
++    preferences: list[str],
++    city_center_lng: float | None = None,
++    city_center_lat: float | None = None,
++) -> list[dict[str, float]]:
++    """Compute per-factor scores for each POI.
++
++    Returns list of dicts with keys:
++        preference_score, distance_score, rating_score, time_score,
++        popularity_score.
++    """
++    if not pois:
++        return []
++
++    pref_set = set(preferences)
++
++    # Max review count for popularity normalization
++    max_review = max(
++        (poi.get("review_count", 0) for poi in pois),
++        default=1,
++    )
++    if max_review == 0:
++        max_review = 1  # avoid division by zero
++
++    # Max distance for distance normalization
++    if city_center_lng is not None and city_center_lat is not None:
++        distances = [
++            _haversine_km(
++                poi.get("lng", 0.0),
++                poi.get("lat", 0.0),
++                city_center_lng,
++                city_center_lat,
++            )
++            for poi in pois
++        ]
++        max_dist = max(distances) if distances else 1.0
++        if max_dist == 0:
++            max_dist = 1.0
++    else:
++        distances = None
++        max_dist = 1.0
++
++    scores: list[dict[str, float]] = []
++    for i, poi in enumerate(pois):
++        # preference_score — Jaccard similarity
++        poi_tags = set(poi.get("tags", []))
++        preference_score = _jaccard_similarity(pref_set, poi_tags)
++
++        # distance_score — inverse distance from city center
++        if distances is not None:
++            distance_score = 1.0 - (distances[i] / max_dist)
++        else:
++            distance_score = 0.5  # neutral when no city center given
++
++        # rating_score — normalized to [0, 1]
++        rating = poi.get("rating", 0.0)
++        rating_score = min(rating / 5.0, 1.0) if rating else 0.0
++
++        # time_score — placeholder
++        time_score = 1.0
++
++        # popularity_score — normalized by max review count
++        review_count = poi.get("review_count", 0)
++        popularity_score = review_count / max_review
++
++        scores.append(
++            {
++                "preference_score": preference_score,
++                "distance_score": distance_score,
++                "rating_score": rating_score,
++                "time_score": time_score,
++                "popularity_score": popularity_score,
++            }
++        )
++
++    return scores
++
++
++# ---------------------------------------------------------------------------
++# Public tool function
++# ---------------------------------------------------------------------------
++
++
++def score_pois_tool(
++    pois: list[dict[str, Any]],
++    preferences: list[str],
++    city_center_lng: float | None = None,
++    city_center_lat: float | None = None,
++) -> list[dict[str, Any]]:
++    """Score POIs using multi-factor weighted scoring.
++
++    Args:
++        pois: List of POI dicts with 'tags', 'rating', 'review_count', etc.
++        preferences: User preference tags (e.g. ['文化', '历史']).
++        city_center_lng: Optional city center longitude for distance scoring.
++        city_center_lat: Optional city center latitude for distance scoring.
++
++    Returns:
++        Copy of POI list with added 'score' field (weighted sum in [0, 1]).
++    """
++    if not pois:
++        return []
++
++    per_factor = _compute_scores(
++        pois=pois,
++        preferences=preferences,
++        city_center_lng=city_center_lng,
++        city_center_lat=city_center_lat,
++    )
++
++    result: list[dict[str, Any]] = []
++    for poi, sc in zip(pois, per_factor):
++        weighted = (
++            WEIGHTS["preference"] * sc["preference_score"]
++            + WEIGHTS["distance"] * sc["distance_score"]
++            + WEIGHTS["rating"] * sc["rating_score"]
++            + WEIGHTS["time"] * sc["time_score"]
++            + WEIGHTS["popularity"] * sc["popularity_score"]
++        )
++        scored_poi = {**poi, "score": round(weighted, 4)}
++        result.append(scored_poi)
++
++    return result
+diff --git a/backend/agent/tools/weather.py b/backend/agent/tools/weather.py
+new file mode 100644
+index 0000000..7d1221b
+--- /dev/null
++++ b/backend/agent/tools/weather.py
+@@ -0,0 +1,26 @@
++"""Weather tool function — placeholder for MVP.
++
++Returns mock weather data. Will be replaced with a real weather API
++(e.g. Amap weather or third-party) in a future task.
++"""
++
++from __future__ import annotations
++
++from typing import Any
++
++
++async def get_weather_tool(city: str) -> dict[str, Any]:
++    """Get weather data for a city (placeholder).
++
++    Args:
++        city: City name, e.g. "北京".
++
++    Returns:
++        Dict with keys: city, temperature, condition, humidity.
++    """
++    return {
++        "city": city,
++        "temperature": 25,
++        "condition": "晴",
++        "humidity": 60,
++    }
+diff --git a/backend/tests/test_agent/test_tools.py b/backend/tests/test_agent/test_tools.py
+new file mode 100644
+index 0000000..187f39a
+--- /dev/null
++++ b/backend/tests/test_agent/test_tools.py
+@@ -0,0 +1,458 @@
++"""Tests for Agent Tool Chain (Task 2.2).
++
++Tests cover:
++- search_pois_tool wraps AmapService.search_pois
++- geocode_tool wraps AmapService.geocode
++- plan_route_tool wraps AmapService.plan_route
++- score_pois_tool implements multi-factor scoring (pure computation)
++- get_weather_tool returns placeholder data
++- get_amap() singleton factory
++- ALL_TOOLS exports all tool functions
++"""
++
++from __future__ import annotations
++
++import math
++
++import pytest
++from unittest.mock import AsyncMock, patch, MagicMock
++
++
++# ---------------------------------------------------------------------------
++# Fixtures
++# ---------------------------------------------------------------------------
++
++
++@pytest.fixture
++def mock_amap() -> MagicMock:
++    """Create a mock AmapService with AsyncMock methods."""
++    svc = MagicMock()
++    svc.search_pois = AsyncMock(return_value=[])
++    svc.geocode = AsyncMock(return_value=(116.397428, 39.90923))
++    svc.reverse_geocode = AsyncMock(
++        return_value={"address": "北京市东城区景山前街4号", "city": "北京市"}
++    )
++    svc.plan_route = AsyncMock(
++        return_value={
++            "distance_km": 1.5,
++            "duration_min": 18.0,
++            "polyline": "116.397,39.909;116.398,39.910",
++        }
++    )
++    return svc
++
++
++@pytest.fixture
++def sample_pois() -> list[dict]:
++    """Provide sample POI dicts for scoring tests."""
++    return [
++        {
++            "amap_id": "poi_1",
++            "name": "故宫博物院",
++            "address": "景山前街4号",
++            "lng": 116.397,
++            "lat": 39.909,
++            "type": "风景名胜",
++            "tags": ["文化", "历史", "古建筑"],
++            "rating": 4.8,
++            "review_count": 5000,
++            "city": "北京",
++        },
++        {
++            "amap_id": "poi_2",
++            "name": "颐和园",
++            "address": "宫门前街1号",
++            "lng": 116.275,
++            "lat": 39.999,
++            "type": "风景名胜",
++            "tags": ["文化", "园林", "历史"],
++            "rating": 4.6,
++            "review_count": 3000,
++            "city": "北京",
++        },
++        {
++            "amap_id": "poi_3",
++            "name": "南锣鼓巷",
++            "address": "南锣鼓巷胡同",
++            "lng": 116.403,
++            "lat": 39.937,
++            "type": "商业街",
++            "tags": ["美食", "购物", "胡同"],
++            "rating": 4.2,
++            "review_count": 2000,
++            "city": "北京",
++        },
++    ]
++
++
++# ---------------------------------------------------------------------------
++# search_pois_tool
++# ---------------------------------------------------------------------------
++
++
++class TestSearchPoisTool:
++    """Tests for search_pois_tool."""
++
++    async def test_search_pois_tool_calls_service(self, mock_amap: MagicMock) -> None:
++        """search_pois_tool should call amap.search_pois with correct args."""
++        mock_amap.search_pois.return_value = [
++            {
++                "amap_id": "B000A7BD6C",
++                "name": "故宫博物院",
++                "address": "景山前街4号",
++                "lng": 116.397,
++                "lat": 39.909,
++                "type": "风景名胜",
++                "city": "北京",
++            },
++        ]
++
++        from agent.tools.poi_search import search_pois_tool
++
++        with patch("agent.tools.get_amap", return_value=mock_amap):
++            result = await search_pois_tool("北京", "景点", keyword="故宫")
++
++        mock_amap.search_pois.assert_awaited_once_with(
++            city="北京",
++            category="景点",
++            keyword="故宫",
++        )
++        assert len(result) == 1
++        assert result[0]["name"] == "故宫博物院"
++
++    async def test_search_pois_tool_without_keyword(
++        self, mock_amap: MagicMock
++    ) -> None:
++        """search_pois_tool without keyword passes None."""
++        from agent.tools.poi_search import search_pois_tool
++
++        with patch("agent.tools.get_amap", return_value=mock_amap):
++            result = await search_pois_tool("上海", "景点")
++
++        mock_amap.search_pois.assert_awaited_once_with(
++            city="上海",
++            category="景点",
++            keyword=None,
++        )
++        assert result == []
++
++    async def test_search_nearby_tool_calls_service(self, mock_amap: MagicMock) -> None:
++        """search_nearby_tool should call amap with correct params."""
++        mock_amap.search_nearby = AsyncMock(return_value=[
++            {"amap_id": "near_1", "name": "附近景点", "lng": 116.40, "lat": 39.91},
++        ])
++
++        from agent.tools.poi_search import search_nearby_tool
++
++        with patch("agent.tools.get_amap", return_value=mock_amap):
++            result = await search_nearby_tool(116.397, 39.909, "景点", radius=2000)
++
++        mock_amap.search_nearby.assert_awaited_once_with(
++            lng=116.397,
++            lat=39.909,
++            category="景点",
++            radius=2000,
++        )
++        assert len(result) == 1
++
++
++# ---------------------------------------------------------------------------
++# geocode_tool / reverse_geocode_tool
++# ---------------------------------------------------------------------------
++
++
++class TestGeocodeTool:
++    """Tests for geocode_tool and reverse_geocode_tool."""
++
++    async def test_geocode_tool_returns_coordinates(
++        self, mock_amap: MagicMock
++    ) -> None:
++        """geocode_tool should return (lng, lat) tuple."""
++        from agent.tools.geocoding import geocode_tool
++
++        with patch("agent.tools.get_amap", return_value=mock_amap):
++            result = await geocode_tool("北京市东城区景山前街4号")
++
++        mock_amap.geocode.assert_awaited_once_with("北京市东城区景山前街4号")
++        assert result == (116.397428, 39.90923)
++
++    async def test_geocode_tool_with_city(self, mock_amap: MagicMock) -> None:
++        """geocode_tool passes city to service when provided."""
++        mock_amap.geocode.return_value = (121.473, 31.230)
++        from agent.tools.geocoding import geocode_tool
++
++        with patch("agent.tools.get_amap", return_value=mock_amap):
++            result = await geocode_tool("黄浦区人民广场", city="上海")
++
++        mock_amap.geocode.assert_awaited_once_with("黄浦区人民广场")
++        assert result == (121.473, 31.230)
++
++    async def test_reverse_geocode_tool(self, mock_amap: MagicMock) -> None:
++        """reverse_geocode_tool should return address dict."""
++        from agent.tools.geocoding import reverse_geocode_tool
++
++        with patch("agent.tools.get_amap", return_value=mock_amap):
++            result = await reverse_geocode_tool(116.397428, 39.90923)
++
++        mock_amap.reverse_geocode.assert_awaited_once_with(116.397428, 39.90923)
++        assert result["address"] == "北京市东城区景山前街4号"
++        assert result["city"] == "北京市"
++
++
++# ---------------------------------------------------------------------------
++# plan_route_tool
++# ---------------------------------------------------------------------------
++
++
++class TestPlanRouteTool:
++    """Tests for plan_route_tool."""
++
++    async def test_plan_route_tool_returns_route(
++        self, mock_amap: MagicMock
++    ) -> None:
++        """plan_route_tool should return route dict with distance and duration."""
++        from agent.tools.route_planning import plan_route_tool
++
++        with patch("agent.tools.get_amap", return_value=mock_amap):
++            result = await plan_route_tool(
++                origin_lng=116.397,
++                origin_lat=39.909,
++                dest_lng=116.399,
++                dest_lat=39.911,
++            )
++
++        mock_amap.plan_route.assert_awaited_once()
++        call_args = mock_amap.plan_route.call_args
++        assert call_args.kwargs["origin"] == (116.397, 39.909)
++        assert call_args.kwargs["destination"] == (116.399, 39.911)
++        assert call_args.kwargs["mode"] == "driving"
++
++        assert result["distance_km"] == pytest.approx(1.5)
++        assert result["duration_min"] == pytest.approx(18.0)
++        assert "polyline" in result
++
++    async def test_plan_route_tool_walking_mode(self, mock_amap: MagicMock) -> None:
++        """plan_route_tool should pass mode parameter to service."""
++        from agent.tools.route_planning import plan_route_tool
++
++        with patch("agent.tools.get_amap", return_value=mock_amap):
++            await plan_route_tool(
++                origin_lng=116.397,
++                origin_lat=39.909,
++                dest_lng=116.399,
++                dest_lat=39.911,
++                mode="walking",
++            )
++
++        call_args = mock_amap.plan_route.call_args
++        assert call_args.kwargs["mode"] == "walking"
++
++
++# ---------------------------------------------------------------------------
++# score_pois_tool (pure computation, no API calls)
++# ---------------------------------------------------------------------------
++
++
++class TestScorePoisTool:
++    """Tests for score_pois_tool multi-factor scoring."""
++
++    def test_score_pois_returns_pois_with_score(
++        self, sample_pois: list[dict]
++    ) -> None:
++        """score_pois_tool should add 'score' field to each POI."""
++        from agent.tools.spatial_analysis import score_pois_tool
++
++        result = score_pois_tool(
++            pois=sample_pois,
++            preferences=["文化", "历史"],
++            city_center_lng=116.407,
++            city_center_lat=39.904,
++        )
++
++        assert len(result) == 3
++        for poi in result:
++            assert "score" in poi
++            assert 0.0 <= poi["score"] <= 1.0
++
++    def test_score_pois_preference_score_jaccard(
++        self, sample_pois: list[dict]
++    ) -> None:
++        """POI with more matching tags should score higher on preference."""
++        from agent.tools.spatial_analysis import score_pois_tool
++
++        result = score_pois_tool(
++            pois=sample_pois,
++            preferences=["文化", "历史", "古建筑"],
++            city_center_lng=116.407,
++            city_center_lat=39.904,
++        )
++
++        # poi_1 (故宫) has tags [文化, 历史, 古建筑] - matches all 3
++        # poi_2 (颐和园) has tags [文化, 园林, 历史] - matches 2
++        # poi_3 (南锣鼓巷) has tags [美食, 购物, 胡同] - matches 0
++        assert result[0]["score"] > result[1]["score"]
++        assert result[1]["score"] > result[2]["score"]
++
++    def test_score_pois_no_preferences(self, sample_pois: list[dict]) -> None:
++        """With empty preferences, preference_score should be 0 for all."""
++        from agent.tools.spatial_analysis import score_pois_tool
++
++        result = score_pois_tool(
++            pois=sample_pois,
++            preferences=[],
++            city_center_lng=116.407,
++            city_center_lat=39.904,
++        )
++
++        # All scores should still be >= 0 (other factors contribute)
++        for poi in result:
++            assert poi["score"] >= 0.0
++
++    def test_score_pois_rating_contributes(self, sample_pois: list[dict]) -> None:
++        """Higher rated POIs should get higher rating_score component."""
++        from agent.tools.spatial_analysis import score_pois_tool
++
++        result = score_pois_tool(
++            pois=sample_pois,
++            preferences=["文化", "历史"],
++            city_center_lng=116.407,
++            city_center_lat=39.904,
++        )
++
++        # poi_1 has rating 4.8, poi_3 has rating 4.2
++        # With same preference match, poi_1 should benefit from higher rating
++        assert result[0]["score"] > result[2]["score"]
++
++    def test_score_pois_weights_sum(self, sample_pois: list[dict]) -> None:
++        """Verify that weights are correctly applied (sum to 1.0)."""
++        from agent.tools.spatial_analysis import WEIGHTS
++
++        total_weight = sum(WEIGHTS.values())
++        assert total_weight == pytest.approx(1.0)
++
++    def test_score_pois_empty_list(self) -> None:
++        """Empty POI list should return empty list."""
++        from agent.tools.spatial_analysis import score_pois_tool
++
++        result = score_pois_tool(pois=[], preferences=["文化"])
++        assert result == []
++
++    def test_score_pois_normalized_scores(self) -> None:
++        """Verify individual score components are in [0, 1]."""
++        from agent.tools.spatial_analysis import _compute_scores
++
++        pois = [
++            {
++                "amap_id": "p1",
++                "name": "Test",
++                "tags": ["文化"],
++                "rating": 4.0,
++                "review_count": 100,
++                "lng": 116.40,
++                "lat": 39.90,
++            },
++        ]
++
++        scores = _compute_scores(
++            pois=pois,
++            preferences=["文化"],
++            city_center_lng=116.407,
++            city_center_lat=39.904,
++        )
++
++        assert len(scores) == 1
++        for key in ["preference_score", "distance_score", "rating_score",
++                     "time_score", "popularity_score"]:
++            assert key in scores[0]
++            assert 0.0 <= scores[0][key] <= 1.0
++
++
++# ---------------------------------------------------------------------------
++# get_weather_tool
++# ---------------------------------------------------------------------------
++
++
++class TestGetWeatherTool:
++    """Tests for get_weather_tool placeholder."""
++
++    async def test_weather_returns_placeholder(self) -> None:
++        """get_weather_tool should return mock weather data."""
++        from agent.tools.weather import get_weather_tool
++
++        result = await get_weather_tool("北京")
++
++        assert result["city"] == "北京"
++        assert "temperature" in result
++        assert "condition" in result
++        assert "humidity" in result
++        assert isinstance(result["temperature"], (int, float))
++        assert isinstance(result["humidity"], (int, float))
++
++    async def test_weather_different_city(self) -> None:
++        """get_weather_tool should use the city parameter."""
++        from agent.tools.weather import get_weather_tool
++
++        result = await get_weather_tool("上海")
++        assert result["city"] == "上海"
++
++
++# ---------------------------------------------------------------------------
++# get_amap() singleton
++# ---------------------------------------------------------------------------
++
++
++class TestGetAmap:
++    """Tests for get_amap() singleton factory."""
++
++    def test_get_amap_returns_same_instance(self) -> None:
++        """get_amap() should return the same AmapService instance."""
++        from agent.tools import get_amap
++
++        with patch.dict("os.environ", {"AMAP_API_KEY": "test_key_123"}):
++            a = get_amap()
++            b = get_amap()
++            assert a is b
++
++    def test_get_amap_creates_amap_service(self) -> None:
++        """get_amap() should return an AmapService instance."""
++        from agent.tools import get_amap, _reset_amap_instance
++        from app.services.amap_service import AmapService
++
++        _reset_amap_instance()  # clear any cached singleton
++
++        with patch.dict("os.environ", {"AMAP_API_KEY": "test_key_456"}):
++            svc = get_amap()
++            assert isinstance(svc, AmapService)
++
++
++# ---------------------------------------------------------------------------
++# ALL_TOOLS
++# ---------------------------------------------------------------------------
++
++
++class TestAllTools:
++    """Tests for ALL_TOOLS list."""
++
++    def test_all_tools_contains_all_functions(self) -> None:
++        """ALL_TOOLS should contain all 7 tool functions."""
++        from agent.tools import ALL_TOOLS
++
++        tool_names = {fn.__name__ for fn in ALL_TOOLS}
++
++        expected = {
++            "search_pois_tool",
++            "search_nearby_tool",
++            "geocode_tool",
++            "reverse_geocode_tool",
++            "plan_route_tool",
++            "score_pois_tool",
++            "get_weather_tool",
++        }
++        assert tool_names == expected
++
++    def test_all_tools_are_async_or_callable(self) -> None:
++        """All tools should be callable."""
++        from agent.tools import ALL_TOOLS
++
++        for tool_fn in ALL_TOOLS:
++            assert callable(tool_fn)

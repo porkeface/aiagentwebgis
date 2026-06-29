@@ -1,0 +1,437 @@
+diff --git a/frontend/src/api/agent.ts b/frontend/src/api/agent.ts
+new file mode 100644
+index 0000000..b415090
+--- /dev/null
++++ b/frontend/src/api/agent.ts
+@@ -0,0 +1,122 @@
++import { getToken } from "./auth";
++import type { SSEEvent } from "../types";
++
++const BASE_URL = "/api/v1";
++
++export async function sendChatMessage(
++  message: string,
++  sessionId: string,
++  onEvent: (event: SSEEvent) => void,
++): Promise<void> {
++  const token = getToken();
++  const headers: Record<string, string> = {
++    "Content-Type": "application/json",
++  };
++  if (token) {
++    headers["Authorization"] = `Bearer ${token}`;
++  }
++
++  const response = await fetch(`${BASE_URL}/agent/chat`, {
++    method: "POST",
++    headers,
++    body: JSON.stringify({ message, session_id: sessionId }),
++  });
++
++  if (!response.ok) {
++    let detail: unknown;
++    try {
++      detail = await response.json();
++    } catch {
++      // ignore parse error
++    }
++    const message =
++      detail && typeof detail === "object" && "detail" in detail
++        ? String((detail as { detail: unknown }).detail)
++        : `Chat request failed with status ${response.status}`;
++    onEvent({ type: "error", data: { status: response.status, message } });
++    return;
++  }
++
++  if (!response.body) {
++    onEvent({ type: "error", data: { message: "Response body is null" } });
++    return;
++  }
++
++  const reader = response.body.getReader();
++  const decoder = new TextDecoder();
++  let buffer = "";
++
++  while (true) {
++    const { done, value } = await reader.read();
++    if (done) break;
++
++    buffer += decoder.decode(value, { stream: true });
++
++    // SSE events are separated by double newlines
++    const parts = buffer.split("\n\n");
++    // Keep the last part in buffer (may be incomplete)
++    buffer = parts.pop() ?? "";
++
++    for (const part of parts) {
++      const event = parseSSEEvent(part);
++      if (event) {
++        onEvent(event);
++      }
++    }
++  }
++
++  // Process any remaining buffer
++  if (buffer.trim()) {
++    const event = parseSSEEvent(buffer);
++    if (event) {
++      onEvent(event);
++    }
++  }
++}
++
++function parseSSEEvent(raw: string): SSEEvent | null {
++  const lines = raw.split("\n");
++  let eventType = "";
++  let dataLines: string[] = [];
++
++  for (const line of lines) {
++    if (line.startsWith("event:")) {
++      eventType = line.slice(6).trim();
++    } else if (line.startsWith("data:")) {
++      dataLines.push(line.slice(5).trim());
++    }
++    // Lines starting with ":" are comments, ignore
++  }
++
++  if (!eventType && dataLines.length === 0) {
++    return null;
++  }
++
++  const rawData = dataLines.join("\n");
++  let parsedData: unknown;
++  try {
++    parsedData = rawData ? JSON.parse(rawData) : null;
++  } catch {
++    parsedData = rawData;
++  }
++
++  const validTypes = [
++    "thinking",
++    "tool_calling",
++    "poi_result",
++    "route_result",
++    "plan_summary",
++    "text",
++    "error",
++  ] as const;
++
++  const type = validTypes.includes(eventType as (typeof validTypes)[number])
++    ? (eventType as (typeof validTypes)[number])
++    : "text";
++
++  return {
++    type,
++    data: parsedData,
++    content: typeof parsedData === "string" ? parsedData : undefined,
++  };
++}
+diff --git a/frontend/src/api/auth.ts b/frontend/src/api/auth.ts
+new file mode 100644
+index 0000000..30e00a9
+--- /dev/null
++++ b/frontend/src/api/auth.ts
+@@ -0,0 +1,41 @@
++import { request } from "./http";
++
++const TOKEN_KEY = "auth_token";
++
++export interface AuthResponse {
++  access_token: string;
++}
++
++export function getToken(): string | null {
++  return localStorage.getItem(TOKEN_KEY);
++}
++
++export function setToken(token: string): void {
++  localStorage.setItem(TOKEN_KEY, token);
++}
++
++export function clearToken(): void {
++  localStorage.removeItem(TOKEN_KEY);
++}
++
++export async function register(username: string, password: string, email: string): Promise<AuthResponse> {
++  const res = await request<AuthResponse>("/auth/register", {
++    method: "POST",
++    body: { username, password, email },
++  });
++  if (res.access_token) {
++    setToken(res.access_token);
++  }
++  return res;
++}
++
++export async function login(username: string, password: string): Promise<AuthResponse> {
++  const res = await request<AuthResponse>("/auth/login", {
++    method: "POST",
++    body: { username, password },
++  });
++  if (res.access_token) {
++    setToken(res.access_token);
++  }
++  return res;
++}
+diff --git a/frontend/src/api/http.ts b/frontend/src/api/http.ts
+new file mode 100644
+index 0000000..2359d4c
+--- /dev/null
++++ b/frontend/src/api/http.ts
+@@ -0,0 +1,70 @@
++const BASE_URL = "/api/v1";
++
++export class APIError extends Error {
++  readonly status: number;
++  readonly detail: unknown;
++
++  constructor(status: number, message: string, detail?: unknown) {
++    super(message);
++    this.name = "APIError";
++    this.status = status;
++    this.detail = detail;
++  }
++}
++
++interface RequestOptions {
++  method?: string;
++  body?: unknown;
++  headers?: Record<string, string>;
++  token?: string | null;
++}
++
++export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
++  const { method = "GET", body, headers = {}, token } = options;
++
++  const url = `${BASE_URL}${path}`;
++
++  const init: RequestInit = {
++    method,
++    headers: {
++      "Content-Type": "application/json",
++      ...headers,
++    },
++  };
++
++  if (token) {
++    (init.headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
++  }
++
++  if (body !== undefined) {
++    init.body = JSON.stringify(body);
++  }
++
++  let response: Response;
++  try {
++    response = await fetch(url, init);
++  } catch (err) {
++    throw new APIError(0, `Network error: ${err instanceof Error ? err.message : String(err)}`);
++  }
++
++  if (!response.ok) {
++    let detail: unknown;
++    try {
++      detail = await response.json();
++    } catch {
++      // ignore parse error
++    }
++    const message =
++      detail && typeof detail === "object" && "detail" in detail
++        ? String((detail as { detail: unknown }).detail)
++        : `Request failed with status ${response.status}`;
++    throw new APIError(response.status, message, detail);
++  }
++
++  // 204 No Content
++  if (response.status === 204) {
++    return undefined as T;
++  }
++
++  return response.json() as Promise<T>;
++}
+diff --git a/frontend/src/api/index.ts b/frontend/src/api/index.ts
+new file mode 100644
+index 0000000..e84082e
+--- /dev/null
++++ b/frontend/src/api/index.ts
+@@ -0,0 +1,5 @@
++export * from "./auth";
++export * from "./poi";
++export * from "./trip";
++export * from "./agent";
++export { APIError } from "./http";
+diff --git a/frontend/src/api/poi.ts b/frontend/src/api/poi.ts
+new file mode 100644
+index 0000000..728862d
+--- /dev/null
++++ b/frontend/src/api/poi.ts
+@@ -0,0 +1,21 @@
++import { request } from "./http";
++import type { POI } from "../types";
++
++export interface POISearchParams {
++  city: string;
++  category?: string;
++  keyword?: string;
++  page?: number;
++  size?: number;
++}
++
++export async function searchPOIs(params: POISearchParams): Promise<POI[]> {
++  const query = new URLSearchParams();
++  query.set("city", params.city);
++  if (params.category) query.set("category", params.category);
++  if (params.keyword) query.set("keyword", params.keyword);
++  if (params.page !== undefined) query.set("page", String(params.page));
++  if (params.size !== undefined) query.set("size", String(params.size));
++
++  return request<POI[]>(`/poi/search?${query.toString()}`);
++}
+diff --git a/frontend/src/api/trip.ts b/frontend/src/api/trip.ts
+new file mode 100644
+index 0000000..d6dde80
+--- /dev/null
++++ b/frontend/src/api/trip.ts
+@@ -0,0 +1,63 @@
++import { request } from "./http";
++import { getToken } from "./auth";
++import type { Trip } from "../types";
++
++export interface TripCreateData {
++  city: string;
++  days: number;
++  title?: string;
++}
++
++export interface TripUpdateData {
++  city?: string;
++  days?: number;
++  title?: string;
++  status?: string;
++}
++
++function authHeaders(): Record<string, string> {
++  const token = getToken();
++  if (token) {
++    return { Authorization: `Bearer ${token}` };
++  }
++  return {};
++}
++
++export async function createTrip(data: TripCreateData): Promise<Trip> {
++  return request<Trip>("/trips", {
++    method: "POST",
++    body: data,
++    headers: authHeaders(),
++  });
++}
++
++export async function listTrips(page = 1, size = 20): Promise<Trip[]> {
++  const query = new URLSearchParams({
++    page: String(page),
++    size: String(size),
++  });
++  return request<Trip[]>(`/trips?${query.toString()}`, {
++    headers: authHeaders(),
++  });
++}
++
++export async function getTrip(id: number): Promise<Trip> {
++  return request<Trip>(`/trips/${id}`, {
++    headers: authHeaders(),
++  });
++}
++
++export async function updateTrip(id: number, data: TripUpdateData): Promise<Trip> {
++  return request<Trip>(`/trips/${id}`, {
++    method: "PATCH",
++    body: data,
++    headers: authHeaders(),
++  });
++}
++
++export async function deleteTrip(id: number): Promise<void> {
++  return request<void>(`/trips/${id}`, {
++    method: "DELETE",
++    headers: authHeaders(),
++  });
++}
+diff --git a/frontend/src/env.d.ts b/frontend/src/env.d.ts
+new file mode 100644
+index 0000000..cd39087
+--- /dev/null
++++ b/frontend/src/env.d.ts
+@@ -0,0 +1,7 @@
++/// <reference types="vite/client" />
++
++declare module "*.vue" {
++  import type { DefineComponent } from "vue";
++  const component: DefineComponent<object, object, unknown>;
++  export default component;
++}
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+new file mode 100644
+index 0000000..8d182c9
+--- /dev/null
++++ b/frontend/src/types/index.ts
+@@ -0,0 +1,60 @@
++// ── POI ────────────────────────────────────────────────────────────────────────
++export interface POI {
++  id: number;
++  name: string;
++  category: string;
++  address: string | null;
++  lng: number;
++  lat: number;
++  rating: number;
++  review_count: number;
++  tags: string[];
++}
++
++// ── Trip ───────────────────────────────────────────────────────────────────────
++export interface Trip {
++  id: number;
++  city: string;
++  days: number;
++  status: string;
++  title: string;
++  created_at: string;
++}
++
++// ── Day Plan ───────────────────────────────────────────────────────────────────
++export interface DayPlan {
++  day: number;
++  pois: POI[];
++  total_distance_km: number;
++}
++
++// ── Chat ───────────────────────────────────────────────────────────────────────
++export interface ChatMessage {
++  role: "user" | "assistant";
++  content: string;
++  timestamp: string;
++}
++
++// ── SSE Event ──────────────────────────────────────────────────────────────────
++export type SSEEventType =
++  | "thinking"
++  | "tool_calling"
++  | "poi_result"
++  | "route_result"
++  | "plan_summary"
++  | "text"
++  | "error";
++
++export interface SSEEvent {
++  type: SSEEventType;
++  data: unknown;
++  content?: string;
++}
++
++// ── Parsed Intent ──────────────────────────────────────────────────────────────
++export interface ParsedIntent {
++  intent: string;
++  city: string | null;
++  days: number | null;
++  preferences: string[];
++}

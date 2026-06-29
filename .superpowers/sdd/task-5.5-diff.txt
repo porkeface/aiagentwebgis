@@ -1,0 +1,288 @@
+diff --git a/frontend/src/api/agent.ts b/frontend/src/api/agent.ts
+index b415090..9fc37cc 100644
+--- a/frontend/src/api/agent.ts
++++ b/frontend/src/api/agent.ts
+@@ -1,12 +1,12 @@
+ import { getToken } from "./auth";
+-import type { SSEEvent } from "../types";
++import type { SSEEvent, SSEEventType } from "../types";
+ 
+ const BASE_URL = "/api/v1";
+ 
+ export async function sendChatMessage(
+   message: string,
+   sessionId: string,
+   onEvent: (event: SSEEvent) => void,
+ ): Promise<void> {
+   const token = getToken();
+   const headers: Record<string, string> = {
+@@ -93,30 +93,52 @@ function parseSSEEvent(raw: string): SSEEvent | null {
+   }
+ 
+   const rawData = dataLines.join("\n");
+   let parsedData: unknown;
+   try {
+     parsedData = rawData ? JSON.parse(rawData) : null;
+   } catch {
+     parsedData = rawData;
+   }
+ 
+-  const validTypes = [
++  // The backend always sends `event: message` on the SSE wire, wrapping the
++  // real event type inside the JSON payload: { type: "<event_type>", data: {...} }.
++  // Extract the actual type from the JSON envelope, falling back to the SSE
++  // event line for non-message events like "done".
++  let type: SSEEventType;
++  let innerData: unknown;
++
++  if (
++    parsedData &&
++    typeof parsedData === "object" &&
++    "type" in (parsedData as Record<string, unknown>)
++  ) {
++    const envelope = parsedData as Record<string, unknown>;
++    type = String(envelope.type) as SSEEventType;
++    innerData = envelope.data;
++  } else {
++    // Non-envelope events (e.g. SSE `event: done` with empty data)
++    type = eventType as SSEEventType;
++    innerData = parsedData;
++  }
++
++  const validTypes: SSEEventType[] = [
+     "thinking",
+     "tool_calling",
+     "poi_result",
+     "route_result",
+     "plan_summary",
+     "text",
+     "error",
+-  ] as const;
++  ];
+ 
+-  const type = validTypes.includes(eventType as (typeof validTypes)[number])
+-    ? (eventType as (typeof validTypes)[number])
+-    : "text";
++  if (!validTypes.includes(type)) {
++    // Unknown event type — silently ignore (e.g. "done")
++    return null;
++  }
+ 
+   return {
+     type,
+-    data: parsedData,
+-    content: typeof parsedData === "string" ? parsedData : undefined,
++    data: innerData,
++    content: typeof innerData === "string" ? innerData : undefined,
+   };
+ }
+diff --git a/frontend/src/stores/chat.ts b/frontend/src/stores/chat.ts
+index c952a27..ad1cb89 100644
+--- a/frontend/src/stores/chat.ts
++++ b/frontend/src/stores/chat.ts
+@@ -1,15 +1,15 @@
+ import { defineStore } from "pinia";
+ import { ref, computed } from "vue";
+ import type { ChatMessage, POI, SSEEvent } from "@/types";
+ import { sendChatMessage } from "@/api/agent";
+-import { useMapStore } from "./map";
++import { useMapStore, type RouteData } from "./map";
+ 
+ function generateSessionId(): string {
+   return crypto.randomUUID();
+ }
+ 
+ export const useChatStore = defineStore("chat", () => {
+   // ── State ──────────────────────────────────────────────────────────────────
+   const messages = ref<ChatMessage[]>([]);
+   const sessionId = ref<string>(generateSessionId());
+   const loading = ref(false);
+@@ -41,34 +41,62 @@ export const useChatStore = defineStore("chat", () => {
+     error.value = null;
+ 
+     // Accumulate text for the assistant response
+     let assistantText = "";
+ 
+     const handleEvent = (event: SSEEvent): void => {
+       const mapStore = useMapStore();
+ 
+       switch (event.type) {
+         case "poi_result": {
+-          // event.data should be POI[] or a single POI
+-          if (Array.isArray(event.data)) {
+-            mapStore.setPOIs(event.data as POI[]);
+-          } else if (event.data && typeof event.data === "object") {
+-            mapStore.setPOIs([event.data as POI]);
++          // Backend sends: { pois: POI[], center: {lng, lat}, zoom?: number }
++          const payload = event.data as Record<string, unknown> | null;
++          if (!payload || typeof payload !== "object") break;
++
++          const pois = payload.pois as POI[] | undefined;
++          const center = payload.center as { lng: number; lat: number } | undefined;
++          const zoom = payload.zoom as number | undefined;
++
++          if (Array.isArray(pois) && pois.length > 0) {
++            mapStore.setPOIs(pois);
++          }
++          if (center && typeof center.lng === "number" && typeof center.lat === "number") {
++            mapStore.setCenter(center);
++          }
++          if (typeof zoom === "number") {
++            mapStore.setZoom(zoom);
+           }
+           break;
+         }
+ 
+         case "route_result": {
+-          if (Array.isArray(event.data)) {
+-            mapStore.setRoutes(event.data);
+-          } else if (event.data && typeof event.data === "object") {
+-            mapStore.setRoutes([event.data]);
++          // Backend sends: { daily_plans: DayPlan[], polylines: Polyline[] }
++          const payload = event.data as Record<string, unknown> | null;
++          if (!payload || typeof payload !== "object") break;
++
++          const dailyPlans = payload.daily_plans as unknown[] | undefined;
++          if (Array.isArray(dailyPlans)) {
++            mapStore.setRoutes(dailyPlans as RouteData[]);
++          }
++          break;
++        }
++
++        case "plan_summary": {
++          // Backend sends: { city: string, days: number }
++          const payload = event.data as Record<string, unknown> | null;
++          if (!payload || typeof payload !== "object") break;
++
++          const city = typeof payload.city === "string" ? payload.city : undefined;
++          const days = typeof payload.days === "number" ? payload.days : undefined;
++
++          if (city !== undefined && days !== undefined) {
++            mapStore.setPlanSummary({ city, days });
+           }
+           break;
+         }
+ 
+         case "text": {
+           const text = typeof event.content === "string"
+             ? event.content
+             : typeof event.data === "string"
+               ? event.data
+               : "";
+@@ -82,21 +110,20 @@ export const useChatStore = defineStore("chat", () => {
+           const errData = event.data as Record<string, unknown> | undefined;
+           const errMsg = errData && typeof errData === "object" && "message" in errData
+             ? String(errData.message)
+             : "An error occurred";
+           error.value = errMsg;
+           break;
+         }
+ 
+         case "thinking":
+         case "tool_calling":
+-        case "plan_summary":
+           // These events are informational — no state update needed
+           break;
+       }
+     };
+ 
+     try {
+       await sendChatMessage(content.trim(), sessionId.value, handleEvent);
+ 
+       // Add the accumulated assistant message
+       if (assistantText.trim()) {
+diff --git a/frontend/src/stores/map.ts b/frontend/src/stores/map.ts
+index 2a2af80..4234b1a 100644
+--- a/frontend/src/stores/map.ts
++++ b/frontend/src/stores/map.ts
+@@ -1,34 +1,41 @@
+ import { defineStore } from "pinia";
+ import { ref, computed } from "vue";
+ import type { POI } from "@/types";
+ 
++export interface PlanSummary {
++  city: string;
++  days: number;
++}
++
+ export interface RouteData {
+   [key: string]: unknown;
+ }
+ 
+ export interface MapCenter {
+   lng: number;
+   lat: number;
+ }
+ 
+ export const useMapStore = defineStore("map", () => {
+   // ── State ──────────────────────────────────────────────────────────────────
+   const pois = ref<POI[]>([]);
+   const routes = ref<RouteData[]>([]);
+   const selectedPOI = ref<POI | null>(null);
+   const center = ref<MapCenter | null>(null);
+   const zoom = ref<number>(13);
++  const planSummary = ref<PlanSummary | null>(null);
+ 
+   // ── Getters ────────────────────────────────────────────────────────────────
+   const poiCount = computed(() => pois.value.length);
+   const hasSelection = computed(() => selectedPOI.value !== null);
++  const hasPlan = computed(() => planSummary.value !== null);
+ 
+   // ── Actions ────────────────────────────────────────────────────────────────
+   function setPOIs(newPOIs: POI[]): void {
+     pois.value = [...newPOIs];
+   }
+ 
+   function setRoutes(newRoutes: RouteData[]): void {
+     routes.value = [...newRoutes];
+   }
+ 
+@@ -39,40 +46,48 @@ export const useMapStore = defineStore("map", () => {
+ 
+   function clearSelection(): void {
+     selectedPOI.value = null;
+   }
+ 
+   function clearMap(): void {
+     pois.value = [];
+     routes.value = [];
+     selectedPOI.value = null;
+     center.value = null;
++    planSummary.value = null;
+   }
+ 
+   function setCenter(newCenter: MapCenter): void {
+     center.value = { ...newCenter };
+   }
+ 
+   function setZoom(newZoom: number): void {
+     zoom.value = newZoom;
+   }
+ 
++  function setPlanSummary(summary: PlanSummary): void {
++    planSummary.value = { ...summary };
++  }
++
+   return {
+     // state
+     pois,
+     routes,
+     selectedPOI,
+     center,
+     zoom,
++    planSummary,
+     // getters
+     poiCount,
+     hasSelection,
++    hasPlan,
+     // actions
+     setPOIs,
+     setRoutes,
+     selectPOI,
+     clearSelection,
+     clearMap,
+     setCenter,
+     setZoom,
++    setPlanSummary,
+   };
+ });
