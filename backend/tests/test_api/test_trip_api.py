@@ -7,6 +7,9 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 
+from app.api.v1.deps import get_current_user
+from app.database import get_session
+from app.main import app
 from app.models.trip import Trip, TripDay, TripDayPOI
 from app.schemas.trip import TripCreate
 
@@ -54,308 +57,278 @@ def _make_trip_day(day_number=1, poi_count=0):
     return day
 
 
+def _setup_overrides(user_id: int = 1) -> AsyncMock:
+    """Set up dependency overrides for auth and session.
+
+    Returns a mock AsyncSession for further configuration.
+    """
+    mock_session = AsyncMock()
+
+    async def _override_get_session() -> AsyncMock:
+        return mock_session
+
+    async def _override_get_current_user() -> int:
+        return user_id
+
+    app.dependency_overrides[get_session] = _override_get_session
+    app.dependency_overrides[get_current_user] = _override_get_current_user
+    return mock_session
+
+
 class TestCreateTrip:
     """Test POST /api/v1/trips."""
 
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.create_trip")
     async def test_create_trip_success(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test successful trip creation."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            trip = _make_trip()
+            mock_service.return_value = trip
 
-        trip = _make_trip()
-        mock_service.return_value = trip
+            payload = {"city": "杭州", "days": 3, "preferences": [], "companion_types": []}
+            response = await client.post("/api/v1/trips", json=payload)
 
-        payload = {"city": "杭州", "days": 3, "preferences": [], "companion_types": []}
-        response = await client.post("/api/v1/trips", json=payload)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert "data" in data
+            assert data["data"]["id"] == 1
+            assert data["data"]["city"] == "杭州"
+            assert data["data"]["status"] == "draft"
+        finally:
+            app.dependency_overrides.clear()
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert "data" in data
-        assert data["data"]["id"] == 1
-        assert data["data"]["city"] == "杭州"
-        assert data["data"]["status"] == "draft"
-
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     async def test_create_trip_validation_error(
         self,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test that invalid data returns 422."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            # days must be >= 1
+            payload = {"city": "杭州", "days": 0}
+            response = await client.post("/api/v1/trips", json=payload)
+            assert response.status_code == 422
+        finally:
+            app.dependency_overrides.clear()
 
-        # days must be >= 1
-        payload = {"city": "杭州", "days": 0}
-        response = await client.post("/api/v1/trips", json=payload)
-        assert response.status_code == 422
-
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.create_trip")
     async def test_create_trip_sets_dates(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test that service is called with correct date calculations."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            trip = _make_trip()
+            mock_service.return_value = trip
 
-        trip = _make_trip()
-        mock_service.return_value = trip
+            payload = {"city": "北京", "days": 5, "preferences": ["文化"], "companion_types": ["family"]}
+            await client.post("/api/v1/trips", json=payload)
 
-        payload = {"city": "北京", "days": 5, "preferences": ["文化"], "companion_types": ["family"]}
-        await client.post("/api/v1/trips", json=payload)
-
-        # Verify service was called
-        mock_service.assert_called_once()
-        call_args = mock_service.call_args
-        assert call_args.kwargs["trip_data"].city == "北京"
-        assert call_args.kwargs["trip_data"].days == 5
+            # Verify service was called
+            mock_service.assert_called_once()
+            call_args = mock_service.call_args
+            assert call_args.kwargs["trip_data"].city == "北京"
+            assert call_args.kwargs["trip_data"].days == 5
+        finally:
+            app.dependency_overrides.clear()
 
 
 class TestListTrips:
     """Test GET /api/v1/trips."""
 
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.list_trips")
     async def test_list_trips_success(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test listing trips with pagination."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            trips = [_make_trip(id=1), _make_trip(id=2)]
+            mock_service.return_value = {"total": 2, "items": trips}
 
-        trips = [_make_trip(id=1), _make_trip(id=2)]
-        mock_service.return_value = {"total": 2, "items": trips}
+            response = await client.get("/api/v1/trips")
 
-        response = await client.get("/api/v1/trips")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["data"]["total"] == 2
+            assert len(data["data"]["items"]) == 2
+        finally:
+            app.dependency_overrides.clear()
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["data"]["total"] == 2
-        assert len(data["data"]["items"]) == 2
-
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.list_trips")
     async def test_list_trips_pagination(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test pagination params are forwarded."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            mock_service.return_value = {"total": 0, "items": []}
 
-        mock_service.return_value = {"total": 0, "items": []}
+            await client.get("/api/v1/trips", params={"page": 2, "size": 5})
 
-        await client.get("/api/v1/trips", params={"page": 2, "size": 5})
+            mock_service.assert_called_once()
+            call_kwargs = mock_service.call_args.kwargs
+            assert call_kwargs["page"] == 2
+            assert call_kwargs["size"] == 5
+        finally:
+            app.dependency_overrides.clear()
 
-        mock_service.assert_called_once()
-        call_kwargs = mock_service.call_args.kwargs
-        assert call_kwargs["page"] == 2
-        assert call_kwargs["size"] == 5
-
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.list_trips")
     async def test_list_trips_empty(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test empty trip list."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            mock_service.return_value = {"total": 0, "items": []}
 
-        mock_service.return_value = {"total": 0, "items": []}
-
-        response = await client.get("/api/v1/trips")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["data"]["total"] == 0
-        assert data["data"]["items"] == []
+            response = await client.get("/api/v1/trips")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["data"]["total"] == 0
+            assert data["data"]["items"] == []
+        finally:
+            app.dependency_overrides.clear()
 
 
 class TestGetTrip:
     """Test GET /api/v1/trips/{trip_id}."""
 
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.get_trip")
     async def test_get_trip_success(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test getting trip detail."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            day1 = _make_trip_day(day_number=1, poi_count=2)
+            day2 = _make_trip_day(day_number=2, poi_count=1)
+            trip = _make_trip(days=[day1, day2])
+            mock_service.return_value = trip
 
-        day1 = _make_trip_day(day_number=1, poi_count=2)
-        day2 = _make_trip_day(day_number=2, poi_count=1)
-        trip = _make_trip(days=[day1, day2])
-        mock_service.return_value = trip
+            response = await client.get("/api/v1/trips/1")
 
-        response = await client.get("/api/v1/trips/1")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["data"]["id"] == 1
+            assert len(data["data"]["daily_plans"]) == 2
+            assert len(data["data"]["daily_plans"][0]["pois"]) == 2
+        finally:
+            app.dependency_overrides.clear()
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["data"]["id"] == 1
-        assert len(data["data"]["daily_plans"]) == 2
-        assert len(data["data"]["daily_plans"][0]["pois"]) == 2
-
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.get_trip")
     async def test_get_trip_not_found(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test getting non-existent trip returns 404."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            mock_service.return_value = None
 
-        mock_service.return_value = None
-
-        response = await client.get("/api/v1/trips/999")
-        assert response.status_code == 404
+            response = await client.get("/api/v1/trips/999")
+            assert response.status_code == 404
+        finally:
+            app.dependency_overrides.clear()
 
 
 class TestUpdateTrip:
     """Test PUT /api/v1/trips/{trip_id}."""
 
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.update_trip")
     async def test_update_trip_success(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test successful trip update."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            trip = _make_trip(title="Updated Title")
+            mock_service.return_value = trip
 
-        trip = _make_trip(title="Updated Title")
-        mock_service.return_value = trip
+            payload = {"title": "Updated Title"}
+            response = await client.put("/api/v1/trips/1", json=payload)
 
-        payload = {"title": "Updated Title"}
-        response = await client.put("/api/v1/trips/1", json=payload)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["data"]["title"] == "Updated Title"
+        finally:
+            app.dependency_overrides.clear()
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["data"]["title"] == "Updated Title"
-
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.update_trip")
     async def test_update_trip_not_found(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test updating non-existent trip returns 404."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            mock_service.return_value = None
 
-        mock_service.return_value = None
-
-        payload = {"title": "Updated"}
-        response = await client.put("/api/v1/trips/999", json=payload)
-        assert response.status_code == 404
+            payload = {"title": "Updated"}
+            response = await client.put("/api/v1/trips/999", json=payload)
+            assert response.status_code == 404
+        finally:
+            app.dependency_overrides.clear()
 
 
 class TestDeleteTrip:
     """Test DELETE /api/v1/trips/{trip_id}."""
 
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.delete_trip")
     async def test_delete_trip_success(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test successful trip deletion."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            mock_service.return_value = True
 
-        mock_service.return_value = True
+            response = await client.delete("/api/v1/trips/1")
 
-        response = await client.delete("/api/v1/trips/1")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["data"]["deleted"] is True
+        finally:
+            app.dependency_overrides.clear()
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["data"]["deleted"] is True
-
-    @patch("app.api.v1.trip.get_session")
-    @patch("app.api.v1.trip.get_current_user")
     @patch("app.services.trip_service.delete_trip")
     async def test_delete_trip_not_found(
         self,
         mock_service: MagicMock,
-        mock_auth: MagicMock,
-        mock_session: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Test deleting non-existent trip returns 404."""
-        mock_auth.return_value = 1
-        mock_session_dep = AsyncMock()
-        mock_session.return_value = mock_session_dep
+        _setup_overrides()
+        try:
+            mock_service.return_value = False
 
-        mock_service.return_value = False
-
-        response = await client.delete("/api/v1/trips/999")
-        assert response.status_code == 404
+            response = await client.delete("/api/v1/trips/999")
+            assert response.status_code == 404
+        finally:
+            app.dependency_overrides.clear()

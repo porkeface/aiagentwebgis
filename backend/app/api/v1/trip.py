@@ -4,21 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.deps import get_current_user
 from app.database import get_session
 from app.schemas.trip import TripCreate, TripDetailResponse, TripResponse
 from app.services import trip_service
 
 router = APIRouter(prefix="/api/v1/trips", tags=["Trip"])
-
-
-# --- Placeholder auth dependency (will be replaced by JWT in T4.5) ---
-
-async def get_current_user() -> int:
-    """Placeholder auth dependency.
-
-    Returns a mock user_id. Real JWT auth will be implemented in T4.5.
-    """
-    return 1
 
 
 # --- Update schema ---
