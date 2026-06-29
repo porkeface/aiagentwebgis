@@ -60,6 +60,11 @@ function handleKeydown(event: Event | KeyboardEvent): void {
 function dismissError(): void {
   chatStore.clearError()
 }
+
+// ── Retry Last Message ──────────────────────────────────────────────────────
+async function handleRetry(): Promise<void> {
+  await chatStore.retryLastMessage()
+}
 </script>
 
 <template>
@@ -95,10 +100,22 @@ function dismissError(): void {
         :is-thinking="true"
       />
 
-      <!-- Error display -->
+      <!-- Error display with retry button -->
       <div v-if="errorMsg" class="chat-panel__error">
-        <span class="error-text">{{ errorMsg }}</span>
-        <button class="error-dismiss" @click="dismissError">✕</button>
+        <span class="chat-panel__error-icon">⚠️</span>
+        <span class="chat-panel__error-text">{{ errorMsg }}</span>
+        <div class="chat-panel__error-actions">
+          <button
+            v-if="chatStore.lastUserMessage"
+            class="chat-panel__retry-btn"
+            @click="handleRetry"
+          >
+            重试
+          </button>
+          <button class="chat-panel__dismiss-btn" @click="dismissError">
+            关闭
+          </button>
+        </div>
       </div>
     </div>
 
@@ -202,7 +219,7 @@ function dismissError(): void {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   margin-top: 8px;
   background: #fef0f0;
   border: 1px solid #fde2e2;
@@ -211,22 +228,51 @@ function dismissError(): void {
   font-size: 13px;
 }
 
-.error-text {
-  flex: 1;
+.chat-panel__error-icon {
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
-.error-dismiss {
+.chat-panel__error-text {
+  flex: 1;
+  line-height: 1.5;
+}
+
+.chat-panel__error-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.chat-panel__retry-btn,
+.chat-panel__dismiss-btn {
   background: none;
-  border: none;
-  color: #f56c6c;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 4px 12px;
   cursor: pointer;
   font-size: 12px;
-  padding: 2px 4px;
-  line-height: 1;
+  transition: all 0.2s;
 }
 
-.error-dismiss:hover {
-  color: #e6a23c;
+.chat-panel__retry-btn {
+  color: #409eff;
+  border-color: #409eff;
+}
+
+.chat-panel__retry-btn:hover {
+  background: #409eff;
+  color: #fff;
+}
+
+.chat-panel__dismiss-btn {
+  color: #909399;
+  border-color: #dcdfe6;
+}
+
+.chat-panel__dismiss-btn:hover {
+  color: #606266;
+  border-color: #c0c4cc;
 }
 
 /* ── Input Area ───────────────────────────────────────────────────────────── */

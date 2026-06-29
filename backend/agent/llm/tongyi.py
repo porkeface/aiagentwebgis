@@ -2,9 +2,13 @@
 
 Supports both native tool_call format and prompt-based JSON extraction
 for models that don't support structured function calling.
+
+Includes retry logic for timeout and connection errors.
 """
 
+import asyncio
 import json
+import logging
 import re
 import uuid
 from typing import Any, AsyncIterator
@@ -12,6 +16,12 @@ from typing import Any, AsyncIterator
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from agent.llm.base import BaseLLMAdapter, LLMChunk, LLMResponse, ToolCall
+
+logger = logging.getLogger(__name__)
+
+# Retry configuration
+MAX_RETRIES = 2
+RETRY_BACKOFF_BASE = 1.0  # seconds
 
 
 class TongyiAdapter(BaseLLMAdapter):
@@ -143,10 +153,11 @@ class TongyiAdapter(BaseLLMAdapter):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
-        """Send chat request with tool call fallback.
+        """Send chat request with tool call fallback and retry logic.
 
         Attempts native tool calling first. If no tool calls are returned
         but tools were provided, falls back to prompt-based extraction.
+        Retries once on timeout/connection errors before returning friendly error.
 
         Args:
             messages: Conversation messages
@@ -158,46 +169,65 @@ class TongyiAdapter(BaseLLMAdapter):
         client = self._get_client()
         lc_messages = self._convert_messages(messages)
 
-        # Try native tool calling first
-        if tools:
+        last_error: Exception | None = None
+
+        # Retry loop for timeout/connection errors
+        for attempt in range(MAX_RETRIES):
             try:
-                # Convert tools to LangChain format
-                # LangChain expects tool functions or OpenAI-format dicts
-                response = await client.ainvoke(lc_messages, tools=tools)
-                return self._parse_response(response)
-            except Exception:
-                # Fall back to prompt-based approach
-                pass
+                # Try native tool calling first
+                if tools:
+                    try:
+                        response = await client.ainvoke(lc_messages, tools=tools)
+                        return self._parse_response(response)
+                    except Exception:
+                        # Fall back to prompt-based approach
+                        pass
 
-        # Normal chat without tools or fallback
-        response = await client.ainvoke(lc_messages)
-        result = self._parse_response(response)
+                # Normal chat without tools or fallback
+                response = await client.ainvoke(lc_messages)
+                result = self._parse_response(response)
 
-        # If tools were provided but no tool_calls returned, try prompt fallback
-        if tools and not result.tool_calls:
-            tool_prompt = self._format_tools_as_prompt(tools)
-            system_msg = SystemMessage(content=tool_prompt)
-            fallback_messages = [system_msg] + lc_messages
-            fallback_response = await client.ainvoke(fallback_messages)
-            fallback_result = self._parse_response(fallback_response)
+                # If tools were provided but no tool_calls returned, try prompt fallback
+                if tools and not result.tool_calls:
+                    tool_prompt = self._format_tools_as_prompt(tools)
+                    system_msg = SystemMessage(content=tool_prompt)
+                    fallback_messages = [system_msg] + lc_messages
+                    fallback_response = await client.ainvoke(fallback_messages)
+                    fallback_result = self._parse_response(fallback_response)
 
-            # Parse tool calls from the text content
-            parsed_calls = self._parse_tool_calls_from_text(fallback_result.content)
-            if parsed_calls:
-                return LLMResponse(
-                    content=fallback_result.content,
-                    tool_calls=parsed_calls,
-                    usage=fallback_result.usage,
+                    # Parse tool calls from the text content
+                    parsed_calls = self._parse_tool_calls_from_text(fallback_result.content)
+                    if parsed_calls:
+                        return LLMResponse(
+                            content=fallback_result.content,
+                            tool_calls=parsed_calls,
+                            usage=fallback_result.usage,
+                        )
+
+                return result
+
+            except (asyncio.TimeoutError, ConnectionError, TimeoutError) as e:
+                last_error = e
+                logger.warning(
+                    f"LLM request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}"
                 )
+                if attempt < MAX_RETRIES - 1:
+                    wait_time = RETRY_BACKOFF_BASE * (2 ** attempt)
+                    await asyncio.sleep(wait_time)
+                    continue
 
-        return result
+        # All retries exhausted - return friendly error
+        error_msg = "抱歉，AI 服务暂时不可用，请稍后重试。"
+        if last_error:
+            logger.error(f"LLM request failed after {MAX_RETRIES} attempts: {last_error}")
+        return LLMResponse(content=error_msg, tool_calls=[], usage={})
 
     async def stream(
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[LLMChunk]:
-        """Stream chat response.
+        """Stream chat response with retry logic.
 
         Args:
             messages: Conversation messages
@@ -209,10 +239,33 @@ class TongyiAdapter(BaseLLMAdapter):
         client = self._get_client()
         lc_messages = self._convert_messages(messages)
 
-        async for chunk in client.astream(lc_messages):
-            content = chunk.content if hasattr(chunk, "content") else str(chunk)
-            yield LLMChunk(content=content, is_done=False)
+        last_error: Exception | None = None
 
+        # Retry loop for timeout/connection errors
+        for attempt in range(MAX_RETRIES):
+            try:
+                async for chunk in client.astream(lc_messages):
+                    content = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    yield LLMChunk(content=content, is_done=False)
+
+                yield LLMChunk(is_done=True)
+                return  # Success - exit retry loop
+
+            except (asyncio.TimeoutError, ConnectionError, TimeoutError) as e:
+                last_error = e
+                logger.warning(
+                    f"LLM stream failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}"
+                )
+                if attempt < MAX_RETRIES - 1:
+                    wait_time = RETRY_BACKOFF_BASE * (2 ** attempt)
+                    await asyncio.sleep(wait_time)
+                    continue
+
+        # All retries exhausted - yield error message
+        error_msg = "抱歉，AI 服务暂时不可用，请稍后重试。"
+        if last_error:
+            logger.error(f"LLM stream failed after {MAX_RETRIES} attempts: {last_error}")
+        yield LLMChunk(content=error_msg, is_done=False)
         yield LLMChunk(is_done=True)
 
     def _parse_response(self, response: Any) -> LLMResponse:

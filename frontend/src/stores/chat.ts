@@ -14,12 +14,14 @@ export const useChatStore = defineStore("chat", () => {
   const sessionId = ref<string>(generateSessionId());
   const loading = ref(false);
   const error = ref<string | null>(null);
+  const lastUserMessage = ref<string>(""); // Store last message for retry
 
   // ── Getters ────────────────────────────────────────────────────────────────
   const lastMessage = computed(() =>
     messages.value.length > 0 ? messages.value[messages.value.length - 1] : null,
   );
   const messageCount = computed(() => messages.value.length);
+  const hasError = computed(() => error.value !== null);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function addMessage(role: ChatMessage["role"], content: string): void {
@@ -34,6 +36,9 @@ export const useChatStore = defineStore("chat", () => {
   // ── Actions ────────────────────────────────────────────────────────────────
   async function sendMessage(content: string): Promise<void> {
     if (!content.trim() || loading.value) return;
+
+    // Store for retry
+    lastUserMessage.value = content.trim();
 
     // Add user message
     addMessage("user", content.trim());
@@ -110,7 +115,7 @@ export const useChatStore = defineStore("chat", () => {
           const errData = event.data as Record<string, unknown> | undefined;
           const errMsg = errData && typeof errData === "object" && "message" in errData
             ? String(errData.message)
-            : "An error occurred";
+            : "抱歉，处理请求时出现错误，请稍后重试。";
           error.value = errMsg;
           break;
         }
@@ -130,7 +135,7 @@ export const useChatStore = defineStore("chat", () => {
         addMessage("assistant", assistantText.trim());
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to send message";
+      const message = err instanceof Error ? err.message : "发送消息失败，请稍后重试。";
       error.value = message;
     } finally {
       loading.value = false;
@@ -145,10 +150,17 @@ export const useChatStore = defineStore("chat", () => {
     sessionId.value = generateSessionId();
     messages.value = [];
     error.value = null;
+    lastUserMessage.value = "";
   }
 
   function clearError(): void {
     error.value = null;
+  }
+
+  async function retryLastMessage(): Promise<void> {
+    if (!lastUserMessage.value || loading.value) return;
+    error.value = null;
+    await sendMessage(lastUserMessage.value);
   }
 
   return {
@@ -157,13 +169,16 @@ export const useChatStore = defineStore("chat", () => {
     sessionId,
     loading,
     error,
+    lastUserMessage,
     // getters
     lastMessage,
     messageCount,
+    hasError,
     // actions
     sendMessage,
     clearMessages,
     resetSession,
     clearError,
+    retryLastMessage,
   };
 });

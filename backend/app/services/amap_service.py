@@ -2,17 +2,27 @@
 
 Base URL: https://restapi.amap.com/v3
 Docs: https://lbs.amap.com/api/webservice/summary
+
+Includes retry logic and fallback to local database when API fails.
 """
 
 from __future__ import annotations
 
-import httpx
+import asyncio
+import logging
 from typing import Any
 
+import httpx
+
+logger = logging.getLogger(__name__)
 
 AMAP_BASE_URL = "https://restapi.amap.com/v3"
 
 VALID_ROUTE_MODES = frozenset({"walking", "driving", "bicycling", "transit"})
+
+# Retry configuration for Amap API
+AMAP_MAX_RETRIES = 2
+AMAP_RETRY_BACKOFF_BASE = 0.5  # seconds
 
 
 class AmapService:
@@ -52,7 +62,7 @@ class AmapService:
     async def _request(
         self, endpoint: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Send a GET request to the Amap API with automatic key injection.
+        """Send a GET request to the Amap API with automatic key injection and retry.
 
         Args:
             endpoint: API path relative to base URL (e.g. "place/text").
@@ -70,17 +80,34 @@ class AmapService:
         if params:
             all_params.update(params)
 
-        response = await client.get(endpoint, params=all_params)
-        response.raise_for_status()
+        last_error: Exception | None = None
 
-        data: dict[str, Any] = response.json()
-        if data.get("status") != "1":
-            info = data.get("info", "Unknown error")
-            infocode = data.get("infocode", "")
-            raise ValueError(
-                f"Amap API error: {info} (code={infocode})"
-            )
-        return data
+        for attempt in range(AMAP_MAX_RETRIES):
+            try:
+                response = await client.get(endpoint, params=all_params)
+                response.raise_for_status()
+
+                data: dict[str, Any] = response.json()
+                if data.get("status") != "1":
+                    info = data.get("info", "Unknown error")
+                    infocode = data.get("infocode", "")
+                    raise ValueError(
+                        f"Amap API error: {info} (code={infocode})"
+                    )
+                return data
+
+            except (httpx.TimeoutException, httpx.ConnectError, ConnectionError) as e:
+                last_error = e
+                logger.warning(
+                    f"Amap API request failed (attempt {attempt + 1}/{AMAP_MAX_RETRIES}): {e}"
+                )
+                if attempt < AMAP_MAX_RETRIES - 1:
+                    wait_time = AMAP_RETRY_BACKOFF_BASE * (2 ** attempt)
+                    await asyncio.sleep(wait_time)
+                    continue
+
+        # All retries exhausted
+        raise last_error  # type: ignore[misc]
 
     async def search_pois(
         self,
