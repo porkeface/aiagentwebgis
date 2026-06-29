@@ -2,6 +2,7 @@
 change: ai-travel-planner
 design-doc: docs/superpowers/specs/2026-06-29-ai-travel-planner-design.md
 base-ref: d94535f
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 # AI Travel Planner Implementation Plan
@@ -25,6 +26,7 @@ base-ref: d94535f
 - Docker Compose for all services
 - No hardcoded secrets, env vars only
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ## File Structure
@@ -58,6 +60,7 @@ aiagentwebgis/
 +-- .env.example
 ```
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ## Task Index
@@ -99,6 +102,7 @@ aiagentwebgis/
 | 7.2 | Frontend E2E | Testing | frontend/tests/ |
 | 7.3 | Docs + Demo | Testing | docs/ |
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ## PHASE 1: Foundation
@@ -128,6 +132,7 @@ aiagentwebgis/
 10. Verify: `curl http://localhost:8000/health` returns `{"status":"ok"}`
 11. Commit: `feat: project scaffolding - Docker Compose, FastAPI, Vue3+Vite`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 1.2: Database Models
@@ -155,6 +160,7 @@ aiagentwebgis/
 8. Run: `pytest tests/test_models.py -v` -- all pass
 9. Commit: `feat: database models - POI(PostGIS), Trip, User, ChatSession`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 1.3: Amap API Service
@@ -185,6 +191,7 @@ aiagentwebgis/
 3. Run: `pytest tests/test_amap_service.py -v` -- all 4 pass
 4. Commit: `feat: Amap API service - POI search, geocoding, route planning`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 1.4: LLM Adapter Layer
@@ -231,6 +238,7 @@ aiagentwebgis/
 7. Run: `pytest tests/test_agent/test_llm_adapter.py -v` -- all 6 pass
 8. Commit: `feat: LLM adapter layer - Tongyi with fallback, OpenAI, Ollama`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ## PHASE 2: Agent Core
@@ -270,6 +278,7 @@ aiagentwebgis/
 5. Run: `pytest tests/test_agent/test_router.py -v` -- all 4 pass
 6. Commit: `feat: LangGraph StateGraph with Router node and conditional routing`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 2.2: Agent Tool Chain
@@ -306,6 +315,7 @@ aiagentwebgis/
 9. Run: `pytest tests/test_agent/test_tools.py -v` -- all 5 pass
 10. Commit: `feat: Agent tool chain - 6 tools for POI search, routing, scoring, weather`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 2.3: Planner Agent (ReAct)
@@ -337,6 +347,7 @@ aiagentwebgis/
 6. Run: `pytest tests/test_agent/test_planner.py -v` -- all 3 pass
 7. Commit: `feat: Planner Agent node with ReAct pattern and parameter extraction`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 2.4: Formatter Node
@@ -370,6 +381,7 @@ aiagentwebgis/
 5. Run: `pytest tests/test_agent/test_formatter.py -v` -- all 4 pass
 6. Commit: `feat: Formatter node - SSE event packaging from AgentState`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ## PHASE 3: Spatial Recommendation Engine
@@ -397,6 +409,7 @@ aiagentwebgis/
 
 3. Run tests, commit: `feat: spatial filter - PostGIS ST_DWithin query`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 3.2: Multi-Factor Scoring
@@ -426,6 +439,7 @@ aiagentwebgis/
 
 3. Run tests, commit: `feat: multi-factor scoring with Jaccard, distance, rating, popularity`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 3.3: MMR Diversity Rerank
@@ -451,6 +465,7 @@ aiagentwebgis/
 
 3. Run tests, commit: `feat: MMR diversity rerank for category-balanced recommendations`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 3.4: DBSCAN Clustering (Day Assignment)
@@ -478,6 +493,7 @@ aiagentwebgis/
 
 3. Run tests, commit: `feat: DBSCAN clustering for day assignment with KMeans fallback`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 3.5: TSP Route Optimization
@@ -504,6 +520,7 @@ aiagentwebgis/
 
 3. Run tests, commit: `feat: TSP optimization - nearest neighbor + 2-opt improvement`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 3.6: Recommendation Pipeline
@@ -530,6 +547,7 @@ aiagentwebgis/
 
 3. Run tests, commit: `feat: recommendation pipeline - 5-step orchestration`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ## PHASE 4: Backend API
@@ -547,6 +565,7 @@ aiagentwebgis/
 1. Define all Pydantic models matching the ORM models and API contracts
 2. Commit: `feat: Pydantic schemas for all API endpoints`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 4.2: POI Service + API
@@ -564,6 +583,7 @@ aiagentwebgis/
 4. Write API test with mock DB
 5. Commit: `feat: POI search API with spatial filtering`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 4.3: Agent Chat SSE API
@@ -583,6 +603,7 @@ aiagentwebgis/
 3. Write API test verifying SSE stream
 4. Commit: `feat: Agent chat API with SSE streaming`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 4.4: Trip CRUD API
@@ -599,6 +620,7 @@ aiagentwebgis/
 4. Write tests
 5. Commit: `feat: Trip CRUD API with user ownership`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 4.5: JWT Auth
@@ -615,6 +637,7 @@ aiagentwebgis/
 4. Write tests
 5. Commit: `feat: JWT authentication - register, login, token validation`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ## PHASE 5: Frontend WebGIS
@@ -633,6 +656,7 @@ aiagentwebgis/
 5. api/auth.ts: register(), login(), store token in localStorage
 6. Commit: `feat: frontend types and API layer`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 5.2: Pinia Stores
@@ -646,6 +670,7 @@ aiagentwebgis/
 3. trip store: trips array, currentTrip, CRUD operations
 4. Commit: `feat: Pinia stores for chat, map, trip state`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 5.3: MapView Component
@@ -660,6 +685,7 @@ aiagentwebgis/
 3. Auto-fit bounds when POIs change
 4. Commit: `feat: MapView with Leaflet + Amap tiles and POI markers`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 5.4: Chat Panel
@@ -674,6 +700,7 @@ aiagentwebgis/
 3. Handle SSE events: update chat store, trigger map store updates
 4. Commit: `feat: Chat panel with SSE streaming and message bubbles`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 5.5: Dialog-Map Linkage
@@ -689,6 +716,7 @@ aiagentwebgis/
 4. User clicks marker -> show info popup
 5. Commit: `feat: dialog-map linkage - SSE events drive map updates`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 5.6: Route Visualization
@@ -702,6 +730,7 @@ aiagentwebgis/
 3. Distance/duration labels on segments
 4. Commit: `feat: route visualization with per-day colored polylines`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 5.7: Trip Detail View
@@ -717,6 +746,7 @@ aiagentwebgis/
 3. TripDetailView: full page with timeline + mini map
 4. Commit: `feat: trip detail view with timeline and day cards`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 5.8: HomeView Assembly
@@ -731,6 +761,7 @@ aiagentwebgis/
 3. Add Vue Router: HomeView as default route
 4. Commit: `feat: HomeView with map+chat split layout`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ## PHASE 6: Integration
@@ -746,6 +777,7 @@ aiagentwebgis/
 3. Run seed script, verify POIs queryable
 4. Commit: `feat: seed data for Hangzhou and Chengdu`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 6.2: E2E Smoke Test
@@ -757,6 +789,7 @@ aiagentwebgis/
 4. Fix any integration issues
 5. Commit: `test: end-to-end smoke test passing`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 6.3: Error Handling
@@ -768,6 +801,7 @@ aiagentwebgis/
 4. Frontend: show error notifications, retry buttons
 5. Commit: `feat: error handling and graceful degradation`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 6.4: UI Polish
@@ -779,6 +813,7 @@ aiagentwebgis/
 4. Smooth map transitions
 5. Commit: `feat: UI polish - styling, animations, responsive`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ## PHASE 7: Testing & Demo
@@ -792,6 +827,7 @@ aiagentwebgis/
 4. Target: 80%+ coverage
 5. Commit: `test: backend test suite with 80%+ coverage`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 7.2: Frontend E2E
@@ -802,6 +838,7 @@ aiagentwebgis/
 3. Test responsive layouts
 4. Commit: `test: frontend E2E tests with Playwright`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ### Task 7.3: Documentation + Demo Prep
@@ -813,6 +850,7 @@ aiagentwebgis/
 4. Pre-record demo video as fallback
 5. Commit: `docs: API docs, user manual, demo preparation`
 
+archived-with: 2026-06-29-ai-travel-planner
 ---
 
 ## Execution Notes

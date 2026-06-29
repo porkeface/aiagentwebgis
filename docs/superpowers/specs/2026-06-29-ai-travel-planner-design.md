@@ -2,6 +2,8 @@
 comet_change: ai-travel-planner
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-29-ai-travel-planner
+status: final
 ---
 
 # Technical Design: AI Travel Planner
