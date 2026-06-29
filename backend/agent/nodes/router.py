@@ -53,7 +53,7 @@ class RouterNode:
         text_lower = text.lower()
 
         # Trip keywords take priority
-        if any(kw in text for kw in TRIP_KEYWORDS):
+        if any(kw in text_lower for kw in TRIP_KEYWORDS):
             return "trip_planning"
 
         # POI recommendation keywords

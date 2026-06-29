@@ -12,6 +12,7 @@ Planner and formatter are placeholders for Tasks 2.3 and 2.4.
 """
 
 from langgraph.graph import StateGraph, START, END
+from langgraph.graph.state import CompiledStateGraph
 
 from agent.state import AgentState
 from agent.nodes.router import RouterNode
@@ -57,7 +58,7 @@ def route_after_router(state: AgentState) -> str:
 # ---------------------------------------------------------------------------
 
 
-def build_graph() -> StateGraph:
+def build_graph() -> CompiledStateGraph:
     """Build and compile the agent LangGraph.
 
     Returns:
