@@ -8,9 +8,11 @@ design_doc: docs/superpowers/specs/2026-06-29-ai-travel-planner-design.md
 plan: docs/superpowers/plans/2026-06-29-ai-travel-planner.md
 verify_result: pending
 verification_report: docs/superpowers/reports/2026-06-29-ai-travel-planner-verify.md
-branch_status: pending
+branch_status: handled
 created_at: 2026-06-29
 verified_at: null
 archived: false
 handoff_context: openspec/changes/ai-travel-planner/.comet/handoff/design-context.json
 handoff_hash: 3dec20ce8406e3a0736e85f8385b5b2a24f1f19edef5021df8af9e4e1aac93bc
+verify_command: cd backend && uv run pytest tests/ -q --tb=no && cd ../frontend && npx vue-tsc --noEmit
+build_command: cd backend && uv run pytest tests/ -q --tb=no
