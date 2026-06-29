@@ -204,28 +204,28 @@ class TestPlannerWeights:
     def test_elderly_companion_adjusts_weights(
         self, planner: PlannerNode
     ) -> None:
-        """Elderly companion should lower distance_weight and time_weight."""
+        """Elderly companion should lower distance and time."""
         state = _make_state(
             recommendation_weights=None, companion_types=["elderly"]
         )
         result = planner._ensure_weights(state)
         weights = result["recommendation_weights"]
 
-        assert weights["distance_weight"] == 0.15
-        assert weights["time_weight"] == 0.25
+        assert weights["distance"] == 0.15
+        assert weights["time"] == 0.25
 
     def test_children_companion_adjusts_weights(
         self, planner: PlannerNode
     ) -> None:
-        """Children companion should increase popularity_weight."""
+        """Children companion should increase popularity."""
         state = _make_state(
             recommendation_weights=None, companion_types=["children"]
         )
         result = planner._ensure_weights(state)
         weights = result["recommendation_weights"]
 
-        assert weights["distance_weight"] == 0.15
-        assert weights["popularity_weight"] == 0.20
+        assert weights["distance"] == 0.15
+        assert weights["popularity"] == 0.30
 
     def test_existing_weights_not_overwritten(
         self, planner: PlannerNode

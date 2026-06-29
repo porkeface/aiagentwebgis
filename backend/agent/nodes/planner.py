@@ -198,8 +198,8 @@ class PlannerNode:
         """Set default recommendation weights if not already present.
 
         Adjusts weights based on companion_types:
-        - elderly: lower distance_weight, lower time_weight
-        - children: lower distance_weight, higher popularity_weight
+        - elderly: lower distance, lower time
+        - children: lower distance, higher popularity
         - default: balanced weights
 
         Args:
@@ -228,21 +228,20 @@ class PlannerNode:
         """
         if "elderly" in companion_types:
             return {
-                "preference_weight": 0.30,
-                "distance_weight": 0.15,
-                "rating_weight": 0.15,
-                "time_weight": 0.25,
-                "popularity_weight": 0.15,
+                "preference": 0.30,
+                "distance": 0.15,
+                "rating": 0.15,
+                "time": 0.25,
+                "popularity": 0.15,
             }
 
         if "children" in companion_types:
             return {
-                "preference_weight": 0.25,
-                "distance_weight": 0.15,
-                "rating_weight": 0.15,
-                "time_weight": 0.10,
-                "popularity_weight": 0.20,
-                "safety_weight": 0.15,
+                "preference": 0.25,
+                "distance": 0.15,
+                "rating": 0.15,
+                "time": 0.15,
+                "popularity": 0.30,
             }
 
         return {
