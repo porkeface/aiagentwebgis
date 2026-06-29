@@ -241,10 +241,15 @@ const invisibleIcon = divIcon({
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   border: 2px solid #fff;
+  transition: transform var(--transition-fast);
+}
+
+.route-stop-inner:hover {
+  transform: scale(1.15);
 }
 
 .route-stop-inner span {
@@ -257,7 +262,7 @@ const invisibleIcon = divIcon({
 }
 
 .route-day-label {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -273,17 +278,17 @@ const invisibleIcon = divIcon({
 }
 
 .route-stop-cat {
-  font-size: 11px;
-  color: #666;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
 }
 
 .route-seg-label {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
-  color: #333;
-  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.95);
   padding: 1px 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }

@@ -168,19 +168,24 @@ function onPOIClick(poi: TripDayPOI): void {
 
 <style scoped>
 .day-card {
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: var(--color-bg-overlay);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   overflow: hidden;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-lg);
+  transition: box-shadow var(--transition-normal);
+}
+
+.day-card:hover {
+  box-shadow: var(--shadow-lg);
 }
 
 .day-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, #1890ff 0%, #52c41a 100%);
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-xl);
+  background: linear-gradient(135deg, var(--color-day-1) 0%, var(--color-day-2) 100%);
   color: #fff;
 }
 
@@ -192,9 +197,9 @@ function onPOIClick(poi: TripDayPOI): void {
   display: inline-block;
   background: rgba(255, 255, 255, 0.25);
   padding: 6px 14px;
-  border-radius: 20px;
+  border-radius: var(--radius-pill);
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .day-meta {
@@ -204,25 +209,25 @@ function onPOIClick(poi: TripDayPOI): void {
 }
 
 .day-date {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 500;
 }
 
 .day-stats {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   opacity: 0.9;
 }
 
 .poi-list {
-  padding: 16px 20px;
+  padding: var(--space-lg) var(--space-xl);
 }
 
 .poi-item {
   display: flex;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid #f0f0f0;
-  transition: background-color 0.2s;
+  gap: var(--space-md);
+  padding: var(--space-md) 0;
+  border-bottom: 1px solid var(--color-border-light);
+  transition: background-color var(--transition-fast);
 }
 
 .poi-item:last-child {
@@ -234,24 +239,25 @@ function onPOIClick(poi: TripDayPOI): void {
 }
 
 .poi-item.clickable:hover {
-  background-color: #f5f7fa;
-  margin: 0 -20px;
-  padding-left: 20px;
-  padding-right: 20px;
-  border-radius: 8px;
+  background-color: var(--color-bg-base);
+  margin: 0 calc(-1 * var(--space-xl));
+  padding-left: var(--space-xl);
+  padding-right: var(--space-xl);
+  border-radius: var(--radius-md);
 }
 
 .poi-index {
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--radius-round);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--font-size-base);
+  box-shadow: var(--shadow-sm);
 }
 
 .poi-content {
@@ -260,10 +266,10 @@ function onPOIClick(poi: TripDayPOI): void {
 }
 
 .poi-name {
-  font-size: 15px;
+  font-size: var(--font-size-md);
   font-weight: 600;
-  color: #1a1a1a;
-  margin-bottom: 4px;
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-xs);
 }
 
 .poi-category {
@@ -272,60 +278,60 @@ function onPOIClick(poi: TripDayPOI): void {
 
 .category-tag {
   display: inline-block;
-  font-size: 11px;
-  color: #666;
-  background: #f0f0f0;
-  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-muted);
+  padding: 2px var(--space-sm);
   border-radius: 10px;
 }
 
 .poi-details {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-md);
   font-size: 13px;
-  color: #666;
-  margin-bottom: 4px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-xs);
 }
 
 .poi-time {
-  color: #1890ff;
+  color: var(--color-primary);
 }
 
 .poi-rating {
-  color: #fa8c16;
+  color: var(--color-warning);
 }
 
 .poi-score {
-  color: #52c41a;
+  color: var(--color-success);
 }
 
 .poi-address {
-  font-size: 12px;
-  color: #999;
-  margin-bottom: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-xs);
 }
 
 .poi-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-xs);
 }
 
 .poi-tag {
-  font-size: 11px;
-  color: #1890ff;
-  background: rgba(24, 144, 255, 0.1);
-  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+  padding: 2px var(--space-sm);
   border-radius: 10px;
 }
 
 .poi-notes {
-  font-size: 12px;
-  color: #888;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
   font-style: italic;
-  margin-top: 4px;
+  margin-top: var(--space-xs);
 }
 
 .poi-distance {
@@ -333,32 +339,32 @@ function onPOIClick(poi: TripDayPOI): void {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 8px 12px;
-  background: #f9f9f9;
-  border-radius: 8px;
-  font-size: 12px;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-bg-muted);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
   flex-shrink: 0;
 }
 
 .distance-label {
   font-weight: 600;
-  color: #1890ff;
+  color: var(--color-primary);
 }
 
 .distance-duration {
-  color: #999;
-  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
 }
 
 .empty-day {
-  padding: 32px 20px;
+  padding: var(--space-2xl) var(--space-xl);
   text-align: center;
-  color: #999;
-  font-size: 14px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
 }
 
 .day-notes {
-  padding: 12px 20px;
+  padding: var(--space-md) var(--space-xl);
   background: #fffbe6;
   border-top: 1px solid #ffe58f;
   font-size: 13px;
@@ -370,7 +376,7 @@ function onPOIClick(poi: TripDayPOI): void {
   .day-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: var(--space-sm);
   }
 
   .poi-item {

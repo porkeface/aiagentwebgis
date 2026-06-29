@@ -26,12 +26,14 @@ import ChatPanel from '@/components/chat/ChatPanel.vue'
   flex: 0 0 60%;
   height: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .home-view__chat {
   flex: 0 0 40%;
   height: 100%;
   overflow: hidden;
+  border-left: 1px solid var(--color-border);
 }
 
 /* Responsive: stack vertically on mobile */
@@ -41,11 +43,21 @@ import ChatPanel from '@/components/chat/ChatPanel.vue'
   }
 
   .home-view__map {
-    flex: 0 0 50%;
+    flex: 0 0 45vh;
+    min-height: 200px;
   }
 
   .home-view__chat {
-    flex: 0 0 50%;
+    flex: 1;
+    border-left: none;
+    border-top: 1px solid var(--color-border);
+  }
+}
+
+/* Small phones */
+@media (max-width: 374px) {
+  .home-view__map {
+    flex: 0 0 35vh;
   }
 }
 </style>

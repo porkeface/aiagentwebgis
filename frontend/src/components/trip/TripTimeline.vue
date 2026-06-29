@@ -60,38 +60,38 @@ function onPOISelect(poi: TripDayPOI): void {
   width: 100%;
   height: 100%;
   overflow-y: auto;
-  background: #f5f7fa;
+  background: var(--color-bg-base);
 }
 
 .timeline-header {
-  padding: 24px 32px;
-  background: #fff;
-  border-bottom: 1px solid #e8e8e8;
+  padding: var(--space-xl) var(--space-2xl);
+  background: var(--color-bg-overlay);
+  border-bottom: 1px solid var(--color-border-light);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: var(--z-sticky);
 }
 
 .trip-title {
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   font-weight: 700;
-  color: #1a1a1a;
-  margin: 0 0 4px;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-xs);
 }
 
 .trip-subtitle {
-  font-size: 14px;
-  color: #666;
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
 .timeline-body {
-  padding: 24px 32px;
+  padding: var(--space-xl) var(--space-2xl);
 }
 
 .timeline-track {
   position: relative;
-  padding-left: 32px;
+  padding-left: var(--space-2xl);
 }
 
 .timeline-line {
@@ -100,12 +100,24 @@ function onPOISelect(poi: TripDayPOI): void {
   top: 0;
   bottom: 0;
   width: 2px;
-  background: #d9d9d9;
+  background: var(--color-border);
 }
 
 .timeline-item {
   position: relative;
-  margin-bottom: 24px;
+  margin-bottom: var(--space-xl);
+  animation: timeline-fade-in 0.4s ease-out;
+}
+
+@keyframes timeline-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .timeline-item:last-child {
@@ -114,7 +126,7 @@ function onPOISelect(poi: TripDayPOI): void {
 
 .timeline-marker {
   position: absolute;
-  left: -32px;
+  left: calc(-1 * var(--space-2xl));
   top: 20px;
   width: 24px;
   height: 24px;
@@ -126,10 +138,10 @@ function onPOISelect(poi: TripDayPOI): void {
 .marker-dot {
   width: 12px;
   height: 12px;
-  border-radius: 50%;
-  background: #1890ff;
-  border: 3px solid #fff;
-  box-shadow: 0 0 0 2px #1890ff;
+  border-radius: var(--radius-round);
+  background: var(--color-primary);
+  border: 3px solid var(--color-bg-overlay);
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 .timeline-content {
@@ -141,35 +153,35 @@ function onPOISelect(poi: TripDayPOI): void {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 64px 32px;
-  color: #999;
+  padding: 64px var(--space-2xl);
+  color: var(--color-text-secondary);
 }
 
 .empty-icon {
   font-size: 48px;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-lg);
 }
 
 /* Responsive */
 @media (max-width: 768px) {
   .timeline-header {
-    padding: 16px 20px;
+    padding: var(--space-lg) var(--space-lg);
   }
 
   .trip-title {
-    font-size: 20px;
+    font-size: var(--font-size-xl);
   }
 
   .timeline-body {
-    padding: 16px 20px;
+    padding: var(--space-lg);
   }
 
   .timeline-track {
-    padding-left: 24px;
+    padding-left: var(--space-xl);
   }
 
   .timeline-marker {
-    left: -24px;
+    left: calc(-1 * var(--space-xl));
   }
 }
 </style>

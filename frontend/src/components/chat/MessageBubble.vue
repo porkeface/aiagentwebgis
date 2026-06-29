@@ -56,9 +56,21 @@ const formattedTime = computed(() => {
 <style scoped>
 .message-bubble {
   display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
   max-width: 85%;
+  animation: bubble-fade-in 0.3s ease-out;
+}
+
+@keyframes bubble-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message-bubble--user {
@@ -74,19 +86,20 @@ const formattedTime = computed(() => {
 .message-bubble__avatar {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: var(--radius-round);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 18px;
   flex-shrink: 0;
-  background: #f0f2f5;
+  background: var(--color-bg-muted);
+  box-shadow: var(--shadow-sm);
 }
 
 .message-bubble__body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-xs);
 }
 
 .message-bubble--user .message-bubble__body {
@@ -99,44 +112,44 @@ const formattedTime = computed(() => {
 
 .message-bubble__content {
   padding: 10px 14px;
-  border-radius: 12px;
-  font-size: 14px;
-  line-height: 1.5;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
   word-break: break-word;
   white-space: pre-wrap;
 }
 
 .message-bubble--user .message-bubble__content {
-  background: #409eff;
+  background: var(--color-primary);
   color: #fff;
-  border-top-right-radius: 4px;
+  border-top-right-radius: var(--radius-sm);
 }
 
 .message-bubble--assistant .message-bubble__content {
-  background: #f4f4f5;
-  color: #303133;
-  border-top-left-radius: 4px;
+  background: var(--color-bg-muted);
+  color: var(--color-text-primary);
+  border-top-left-radius: var(--radius-sm);
 }
 
 .message-bubble__time {
-  font-size: 11px;
-  color: #909399;
-  padding: 0 4px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  padding: 0 var(--space-xs);
 }
 
 /* ── Typing Indicator ────────────────────────────────────────────────────── */
 .message-bubble__typing {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 0;
+  gap: var(--space-xs);
+  padding: var(--space-xs) 0;
 }
 
 .typing-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #909399;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-round);
+  background: var(--color-text-secondary);
   animation: typing-bounce 1.4s infinite ease-in-out both;
 }
 
@@ -160,6 +173,19 @@ const formattedTime = computed(() => {
   40% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .message-bubble {
+    max-width: 92%;
+  }
+
+  .message-bubble__avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
   }
 }
 </style>
