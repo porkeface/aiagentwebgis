@@ -60,6 +60,8 @@ class TestCreateTrip:
 
         mock_trip = MagicMock(spec=Trip)
         mock_trip.id = 1
+        mock_trip.start_date = date.today()
+        mock_trip.end_date = date.today() + timedelta(days=4)
         mock_trip.days = []
 
         mock_result = MagicMock()
