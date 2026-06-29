@@ -360,6 +360,167 @@ class TestAgentChatSSEMocked:
         assert "daily_plans" in route_data, "route_result missing daily_plans field"
         assert len(route_data["daily_plans"]) > 0, "daily_plans is empty"
 
+    def test_sse_event_ordering(self, test_client: Any) -> None:
+        """Test that SSE events arrive in the expected sequence.
+
+        Expected order:
+        1. thinking (optional)
+        2. tool_calling (optional)
+        3. poi_result
+        4. route_result
+        5. plan_summary or text
+        """
+        mock_events: list[dict[str, Any]] = [
+            {"type": "thinking", "content": "让我思考一下..."},
+            {"type": "tool_calling", "tool": "search_poi", "status": "running"},
+            {
+                "type": "poi_result",
+                "pois": [
+                    {"id": "1", "name": "西湖", "lng": 120.15, "lat": 30.25, "category": "scenic"},
+                ],
+                "center": {"lng": 120.15, "lat": 30.25},
+                "zoom": 13,
+            },
+            {
+                "type": "route_result",
+                "daily_plans": [
+                    {
+                        "day": 1,
+                        "pois": ["1"],
+                        "polyline": [[120.15, 30.25]],
+                    }
+                ],
+                "polylines": [[[120.15, 30.25]]],
+            },
+            {
+                "type": "plan_summary",
+                "city": "杭州",
+                "days": 1,
+            },
+            {"type": "text", "content": "行程已规划完成"},
+        ]
+
+        with patch("app.api.v1.agent.build_graph") as mock_build_graph:
+            mock_graph = AsyncMock()
+            mock_graph.ainvoke.return_value = {"structured_plan": mock_events}
+            mock_build_graph.return_value = mock_graph
+
+            response = test_client.post(
+                "/api/v1/agent/chat",
+                json={"session_id": "order-test", "message": "帮我规划杭州一日游"},
+            )
+
+        assert response.status_code == 200
+
+        events = _parse_sse_events(response.text)
+        # Collect only message events (skip done)
+        message_types = [
+            e["data"].get("type")
+            for e in events
+            if e["event"] == "message"
+        ]
+
+        # Optional events may or may not be present, but required events
+        # must appear in the correct relative order
+        required_order = ["poi_result", "route_result"]
+        terminal_types = {"plan_summary", "text"}
+
+        # Find indices of required events
+        indices: dict[str, int] = {}
+        for required_type in required_order:
+            idx = message_types.index(required_type) if required_type in message_types else -1
+            assert idx != -1, f"Missing required event: {required_type}"
+            indices[required_type] = idx
+
+        # Verify poi_result comes before route_result
+        assert indices["poi_result"] < indices["route_result"], (
+            f"poi_result (idx={indices['poi_result']}) must come before "
+            f"route_result (idx={indices['route_result']})"
+        )
+
+        # Verify optional events (thinking, tool_calling) come before poi_result
+        optional_before_poi = ["thinking", "tool_calling"]
+        poi_idx = indices["poi_result"]
+        for opt_type in optional_before_poi:
+            if opt_type in message_types:
+                opt_idx = message_types.index(opt_type)
+                assert opt_idx < poi_idx, (
+                    f"{opt_type} (idx={opt_idx}) must come before "
+                    f"poi_result (idx={poi_idx})"
+                )
+
+        # Verify terminal events (plan_summary or text) come after route_result
+        route_idx = indices["route_result"]
+        for term_type in terminal_types:
+            if term_type in message_types:
+                term_idx = message_types.index(term_type)
+                assert term_idx > route_idx, (
+                    f"{term_type} (idx={term_idx}) must come after "
+                    f"route_result (idx={route_idx})"
+                )
+
+        # Verify stream ends with done
+        assert events[-1]["event"] == "done", "Stream should end with done event"
+
+    def test_empty_poi_response(self, test_client: Any) -> None:
+        """Test that empty POI list is handled gracefully.
+
+        When the agent returns a poi_result with an empty pois array,
+        the system should not crash and should still return a valid
+        SSE stream.
+        """
+        mock_events: list[dict[str, Any]] = [
+            {
+                "type": "poi_result",
+                "pois": [],
+                "center": {"lng": 0.0, "lat": 0.0},
+                "zoom": 1,
+            },
+            {
+                "type": "text",
+                "content": "抱歉，没有找到符合条件的地点。",
+            },
+        ]
+
+        with patch("app.api.v1.agent.build_graph") as mock_build_graph:
+            mock_graph = AsyncMock()
+            mock_graph.ainvoke.return_value = {"structured_plan": mock_events}
+            mock_build_graph.return_value = mock_graph
+
+            response = test_client.post(
+                "/api/v1/agent/chat",
+                json={"session_id": "empty-poi-test", "message": "找一个不存在的地方"},
+            )
+
+        assert response.status_code == 200, (
+            f"Empty POI response failed: {response.status_code}"
+        )
+        assert response.headers["content-type"].startswith("text/event-stream")
+
+        events = _parse_sse_events(response.text)
+        assert len(events) >= 2, "Expected at least poi_result and done events"
+
+        # Verify poi_result with empty pois is present
+        poi_events = [
+            e for e in events
+            if e["data"].get("type") == "poi_result"
+        ]
+        assert len(poi_events) == 1, "Expected exactly one poi_result event"
+
+        poi_data = _get_event_inner_data(poi_events[0])
+        assert "pois" in poi_data, "poi_result missing pois field"
+        assert poi_data["pois"] == [], "pois should be an empty list"
+
+        # Verify text event is present with a user-friendly message
+        text_events = [
+            e for e in events
+            if e["data"].get("type") == "text"
+        ]
+        assert len(text_events) >= 1, "Expected a text event for empty POI case"
+
+        # Verify stream ends properly
+        assert events[-1]["event"] == "done", "Stream must end with done event"
+
     def test_sse_stream_ends_with_done(self, test_client: Any) -> None:
         """Test that SSE stream always terminates with a done event."""
         mock_events: list[dict[str, Any]] = [
