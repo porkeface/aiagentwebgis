@@ -217,35 +217,52 @@ class TestBuildGraph:
         assert "planner" in node_names
         assert "formatter" in node_names
 
-    def test_graph_routes_trip_to_planner(self) -> None:
+    async def test_graph_routes_trip_to_planner(self) -> None:
         """Trip planning input should route through planner."""
+        from unittest.mock import AsyncMock, patch
+
         from agent.graph import build_graph
+        from agent.llm.base import LLMResponse
         from agent.state import AgentState
 
-        graph = build_graph()
+        # Mock the LLM adapter to avoid real API calls
+        mock_adapter = AsyncMock()
+        mock_adapter.chat = AsyncMock(
+            return_value=LLMResponse(content="杭州两日游行程安排...")
+        )
 
-        initial_state: AgentState = {
-            "messages": [{"role": "user", "content": "帮我规划杭州两日游"}],
-            "session_id": "test-session-1",
-            "intent": "",
-            "city": None,
-            "days": None,
-            "preferences": [],
-            "companion_types": [],
-            "budget_level": None,
-            "candidate_pois": [],
-            "selected_pois": [],
-            "daily_plans": [],
-            "route_polylines": [],
-            "recommendation_weights": None,
-            "response_text": "",
-            "structured_plan": None,
-        }
+        with patch("agent.graph.get_llm_adapter", return_value=mock_adapter):
+            graph = build_graph()
 
-        result = graph.invoke(initial_state)
-        # After routing through planner (placeholder) and formatter (placeholder),
-        # the intent should be set
-        assert result["intent"] == "trip_planning"
+            initial_state: AgentState = {
+                "messages": [{"role": "user", "content": "帮我规划杭州两日游"}],
+                "session_id": "test-session-1",
+                "intent": "",
+                "city": None,
+                "days": None,
+                "preferences": [],
+                "companion_types": [],
+                "budget_level": None,
+                "candidate_pois": [],
+                "selected_pois": [],
+                "daily_plans": [],
+                "route_polylines": [],
+                "recommendation_weights": None,
+                "response_text": "",
+                "structured_plan": None,
+            }
+
+            # Planner is now async, so use ainvoke
+            result = await graph.ainvoke(initial_state)
+            # After routing through planner and formatter, intent should be set
+            assert result["intent"] == "trip_planning"
+            # Planner should have extracted city and days
+            assert result["city"] == "杭州"
+            assert result["days"] == 2
+            # Planner should have populated recommendation_weights
+            assert result["recommendation_weights"] is not None
+            # Planner should have set response_text
+            assert result["response_text"] != ""
 
     def test_graph_routes_general_to_formatter(self) -> None:
         """General/greeting input should route directly to formatter."""

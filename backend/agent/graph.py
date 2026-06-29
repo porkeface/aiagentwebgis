@@ -16,16 +16,13 @@ from langgraph.graph.state import CompiledStateGraph
 
 from agent.state import AgentState
 from agent.nodes.router import RouterNode
+from agent.nodes.planner import PlannerNode
+from agent.llm.factory import get_llm_adapter
 
 
 # ---------------------------------------------------------------------------
-# Placeholder nodes (to be implemented in Tasks 2.3, 2.4)
+# Placeholder nodes (to be implemented in Task 2.4)
 # ---------------------------------------------------------------------------
-
-
-def planner_node(state: AgentState) -> AgentState:
-    """Placeholder planner node. Returns state unchanged."""
-    return state
 
 
 def formatter_node(state: AgentState) -> AgentState:
@@ -65,12 +62,13 @@ def build_graph() -> CompiledStateGraph:
         A compiled LangGraph ready to be invoked.
     """
     router_node = RouterNode()
+    planner_node = PlannerNode(llm_adapter=get_llm_adapter())
 
     graph = StateGraph(AgentState)
 
     # Add nodes
     graph.add_node("router", router_node.route)
-    graph.add_node("planner", planner_node)
+    graph.add_node("planner", planner_node.plan)
     graph.add_node("formatter", formatter_node)
 
     # Edges
