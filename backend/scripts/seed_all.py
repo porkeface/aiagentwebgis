@@ -30,9 +30,8 @@ def main() -> None:
     engine = get_sync_engine()
     try:
         with engine.connect() as conn:
-            conn.execute(conn.execution_options(isolation_level="autocommit"))
-            # Simple query to confirm PostGIS is available
             from sqlalchemy import text
+
             conn.execute(text("SELECT 1"))
         print("Database connection: OK\n")
     except Exception as exc:

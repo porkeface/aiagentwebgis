@@ -1,4 +1,4 @@
-"""Seed data for Hangzhou (杭州) — 26 real POIs with accurate coordinates."""
+"""Seed data for Hangzhou (杭州) — 25 real POIs with accurate coordinates."""
 
 from scripts.seed_base import check_existing, ensure_tables, get_sync_engine, seed_pois
 
