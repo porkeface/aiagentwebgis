@@ -160,6 +160,18 @@ export const useChatStore = defineStore("chat", () => {
   async function retryLastMessage(): Promise<void> {
     if (!lastUserMessage.value || loading.value) return;
     error.value = null;
+    // Remove the last user message and any trailing error/assistant messages
+    // from the failed attempt before re-sending to avoid duplicates.
+    const msgs = messages.value;
+    let cutIndex = msgs.length;
+    // Walk backwards: remove trailing assistant/error messages, then the user message.
+    while (cutIndex > 0 && msgs[cutIndex - 1].role !== "user") {
+      cutIndex--;
+    }
+    if (cutIndex > 0 && msgs[cutIndex - 1].role === "user") {
+      // cutIndex now points at the last user message — remove it too.
+    }
+    messages.value = msgs.slice(0, cutIndex);
     await sendMessage(lastUserMessage.value);
   }
 

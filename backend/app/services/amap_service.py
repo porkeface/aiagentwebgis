@@ -168,6 +168,58 @@ class AmapService:
 
         return results
 
+    async def search_nearby(
+        self,
+        lng: float,
+        lat: float,
+        category: str,
+        radius: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Search nearby POIs around a coordinate via the place/around endpoint.
+
+        Args:
+            lng: Longitude of the center point.
+            lat: Latitude of the center point.
+            category: POI type category, e.g. "景点".
+            radius: Search radius in meters (default 1000).
+
+        Returns:
+            List of POI dicts with keys: amap_id, name, address, lng, lat, type.
+        """
+        params: dict[str, str] = {
+            "location": f"{lng},{lat}",
+            "types": category,
+            "radius": str(radius),
+            "offset": "20",
+        }
+
+        data = await self._request("place/around", params)
+
+        results: list[dict[str, Any]] = []
+        for poi in data.get("pois", []):
+            location_str = poi.get("location", "")
+            poi_lng, poi_lat = 0.0, 0.0
+            if location_str and "," in location_str:
+                parts = location_str.split(",")
+                try:
+                    poi_lng = float(parts[0])
+                    poi_lat = float(parts[1])
+                except (ValueError, IndexError):
+                    pass
+
+            results.append(
+                {
+                    "amap_id": poi.get("id", ""),
+                    "name": poi.get("name", ""),
+                    "address": poi.get("address", ""),
+                    "lng": poi_lng,
+                    "lat": poi_lat,
+                    "type": poi.get("type", ""),
+                }
+            )
+
+        return results
+
     async def geocode(self, address: str) -> tuple[float, float]:
         """Geocode an address to (longitude, latitude).
 
