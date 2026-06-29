@@ -48,9 +48,10 @@ function handleSend(): void {
   inputText.value = ''
 }
 
-function handleKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
+function handleKeydown(event: Event | KeyboardEvent): void {
+  const e = event as KeyboardEvent
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
     handleSend()
   }
 }

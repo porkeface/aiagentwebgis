@@ -1,6 +1,7 @@
 """Trip CRUD API endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from geoalchemy2.shape import to_shape
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -107,21 +108,31 @@ async def get_trip_endpoint(
 
     daily_plans = []
     for day in trip.days:
-        pois = [
-            {
+        pois = []
+        for p in day.pois:
+            poi_obj = p.poi
+            if poi_obj and poi_obj.location:
+                point = to_shape(poi_obj.location)
+                lng = point.x
+                lat = point.y
+            else:
+                lng = None
+                lat = None
+            pois.append({
                 "poi_id": p.poi_id,
                 "sort_order": p.sort_order,
                 "arrival_time": p.arrival_time,
                 "departure_time": p.departure_time,
                 "score": p.score,
                 "notes": p.notes,
-                "name": None,
-                "category": None,
-                "lng": None,
-                "lat": None,
-            }
-            for p in day.pois
-        ]
+                "name": poi_obj.name if poi_obj else None,
+                "category": poi_obj.category if poi_obj else None,
+                "lng": lng,
+                "lat": lat,
+                "rating": poi_obj.rating if poi_obj else None,
+                "address": poi_obj.address if poi_obj else None,
+                "tags": poi_obj.tags if poi_obj else [],
+            })
         daily_plans.append({
             "day_number": day.day_number,
             "date": day.date.isoformat(),

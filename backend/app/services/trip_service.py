@@ -84,7 +84,7 @@ async def get_trip(
         select(Trip)
         .where(Trip.id == trip_id, Trip.user_id == user_id)
         .options(
-            selectinload(Trip.days).selectinload(TripDay.pois),
+            selectinload(Trip.days).selectinload(TripDay.pois).selectinload(TripDayPOI.poi),
         )
     )
     result = await db.execute(stmt)

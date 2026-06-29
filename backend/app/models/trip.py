@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.poi import Base
 
 if TYPE_CHECKING:
+    from app.models.poi import POI
     from app.models.user import User
 
 
@@ -110,6 +111,7 @@ class TripDayPOI(Base):
 
     # Relationships
     trip_day: Mapped["TripDay"] = relationship("TripDay", back_populates="pois")
+    poi: Mapped["POI"] = relationship("POI")
 
     def __repr__(self) -> str:
         return f"<TripDayPOI(id={self.id}, poi_id={self.poi_id}, order={self.sort_order})>"

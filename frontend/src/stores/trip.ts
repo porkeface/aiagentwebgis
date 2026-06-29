@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import type { Trip } from "@/types";
+import type { Trip, TripDetail } from "@/types";
 import {
   listTrips,
   getTrip,
@@ -13,7 +13,7 @@ import type { TripCreateData, TripUpdateData } from "@/api/trip";
 export const useTripStore = defineStore("trip", () => {
   // ── State ──────────────────────────────────────────────────────────────────
   const trips = ref<Trip[]>([]);
-  const currentTrip = ref<Trip | null>(null);
+  const currentTrip = ref<TripDetail | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
 
@@ -53,7 +53,6 @@ export const useTripStore = defineStore("trip", () => {
     try {
       const trip = await apiCreateTrip(data);
       trips.value = [...trips.value, trip];
-      currentTrip.value = trip;
       return trip;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create trip";
@@ -70,9 +69,6 @@ export const useTripStore = defineStore("trip", () => {
     try {
       const updated = await apiUpdateTrip(id, data);
       trips.value = trips.value.map((t) => (t.id === id ? updated : t));
-      if (currentTrip.value?.id === id) {
-        currentTrip.value = updated;
-      }
       return updated;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to update trip";
@@ -106,6 +102,10 @@ export const useTripStore = defineStore("trip", () => {
     error.value = null;
   }
 
+  function clearCurrentTrip(): void {
+    currentTrip.value = null;
+  }
+
   return {
     // state
     trips,
@@ -121,5 +121,6 @@ export const useTripStore = defineStore("trip", () => {
     updateTrip,
     deleteTrip,
     clearError,
+    clearCurrentTrip,
   };
 });
