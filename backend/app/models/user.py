@@ -23,6 +23,7 @@ class User(Base):
     )
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     nickname: Mapped[str] = mapped_column(String(100), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     # Relationships
     chat_sessions: Mapped[list["ChatSession"]] = relationship(
