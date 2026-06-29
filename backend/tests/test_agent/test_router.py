@@ -264,7 +264,7 @@ class TestBuildGraph:
             # Planner should have set response_text
             assert result["response_text"] != ""
 
-    def test_graph_routes_general_to_formatter(self) -> None:
+    async def test_graph_routes_general_to_formatter(self) -> None:
         """General/greeting input should route directly to formatter."""
         from agent.graph import build_graph
         from agent.state import AgentState
@@ -289,5 +289,5 @@ class TestBuildGraph:
             "structured_plan": None,
         }
 
-        result = graph.invoke(initial_state)
+        result = await graph.ainvoke(initial_state)
         assert result["intent"] == "general"

@@ -1,14 +1,12 @@
 """LangGraph StateGraph definition for the AI Travel Planner agent.
 
 Graph structure:
-    START -> router -+-> planner (placeholder) -> formatter (placeholder) -> END
-                     +--> formatter (placeholder) -> END
+    START -> router -+-> planner -> formatter -> END
+                     +--> formatter -> END
 
 The router classifies intent and conditionally routes:
-- 'trip_planning' / 'poi_recommendation' -> planner
+- 'trip_planning' / 'poi_recommendation' -> planner -> formatter
 - 'general' -> formatter (direct response)
-
-Planner and formatter are placeholders for Tasks 2.3 and 2.4.
 """
 
 from langgraph.graph import StateGraph, START, END
@@ -17,17 +15,8 @@ from langgraph.graph.state import CompiledStateGraph
 from agent.state import AgentState
 from agent.nodes.router import RouterNode
 from agent.nodes.planner import PlannerNode
+from agent.nodes.formatter import FormatterNode
 from agent.llm.factory import get_llm_adapter
-
-
-# ---------------------------------------------------------------------------
-# Placeholder nodes (to be implemented in Task 2.4)
-# ---------------------------------------------------------------------------
-
-
-def formatter_node(state: AgentState) -> AgentState:
-    """Placeholder formatter node. Returns state unchanged."""
-    return state
 
 
 # ---------------------------------------------------------------------------
@@ -63,13 +52,14 @@ def build_graph() -> CompiledStateGraph:
     """
     router_node = RouterNode()
     planner_node = PlannerNode(llm_adapter=get_llm_adapter())
+    formatter_node = FormatterNode()
 
     graph = StateGraph(AgentState)
 
     # Add nodes
     graph.add_node("router", router_node.route)
     graph.add_node("planner", planner_node.plan)
-    graph.add_node("formatter", formatter_node)
+    graph.add_node("formatter", formatter_node.format)
 
     # Edges
     graph.add_edge(START, "router")
