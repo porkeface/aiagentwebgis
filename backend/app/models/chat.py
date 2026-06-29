@@ -1,5 +1,6 @@
 """ChatSession model."""
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
@@ -24,10 +25,10 @@ class ChatSession(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=True)
     messages_json: Mapped[dict | list] = mapped_column(JSONB, nullable=True)
     agent_state_json: Mapped[dict] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[str] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    updated_at: Mapped[str] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 

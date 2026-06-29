@@ -1,6 +1,6 @@
 """Trip, TripDay, TripDayPOI models with cascading deletes."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -38,10 +38,10 @@ class Trip(Base):
         String(50), nullable=False, default="draft", index=True
     )
     notes: Mapped[str] = mapped_column(Text, nullable=True)
-    created_at: Mapped[str] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    updated_at: Mapped[str] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 

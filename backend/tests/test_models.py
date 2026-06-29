@@ -76,6 +76,41 @@ class TestPOIModel:
         assert hasattr(POI, "to_dict")
         assert callable(getattr(POI, "to_dict"))
 
+    def test_to_dict_includes_location(self) -> None:
+        """POI.to_dict() should include location field when location is set."""
+        from geoalchemy2.shape import from_shape
+        from shapely.geometry import Point
+
+        poi = POI(
+            id=1,
+            name="Test POI",
+            category="test",
+            city="test_city",
+            rating=4.5,
+        )
+        # Set location using geoalchemy2 shape conversion
+        poi.location = from_shape(Point(116.397428, 39.90923), srid=4326)
+
+        result = poi.to_dict()
+
+        assert "location" in result
+        assert isinstance(result["location"], dict)
+        assert result["location"]["lng"] == pytest.approx(116.397428)
+        assert result["location"]["lat"] == pytest.approx(39.90923)
+
+    def test_to_dict_location_none(self) -> None:
+        """POI.to_dict() should not include location key when location is None."""
+        poi = POI(
+            id=2,
+            name="Test POI No Location",
+            category="test",
+            city="test_city",
+        )
+
+        result = poi.to_dict()
+
+        assert "location" not in result
+
 
 class TestUserModel:
     """Test User model fields."""

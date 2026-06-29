@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from geoalchemy2 import Geometry
+from geoalchemy2.shape import to_shape
 from sqlalchemy import ARRAY, DateTime, Float, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -37,7 +38,7 @@ class POI(Base):
 
     def to_dict(self) -> dict:
         """Convert POI to dictionary."""
-        return {
+        result = {
             "id": self.id,
             "name": self.name,
             "category": self.category,
@@ -51,3 +52,7 @@ class POI(Base):
             "extra_data": self.extra_data,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+        if self.location:
+            point = to_shape(self.location)
+            result["location"] = {"lng": point.x, "lat": point.y}
+        return result
