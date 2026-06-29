@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { ChatMessage, POI, SSEEvent } from "@/types";
 import { sendChatMessage } from "@/api/agent";
-import { useMapStore } from "./map";
+import { useMapStore, type RouteData } from "./map";
 
 function generateSessionId(): string {
   return crypto.randomUUID();
@@ -48,20 +48,48 @@ export const useChatStore = defineStore("chat", () => {
 
       switch (event.type) {
         case "poi_result": {
-          // event.data should be POI[] or a single POI
-          if (Array.isArray(event.data)) {
-            mapStore.setPOIs(event.data as POI[]);
-          } else if (event.data && typeof event.data === "object") {
-            mapStore.setPOIs([event.data as POI]);
+          // Backend sends: { pois: POI[], center: {lng, lat}, zoom?: number }
+          const payload = event.data as Record<string, unknown> | null;
+          if (!payload || typeof payload !== "object") break;
+
+          const pois = payload.pois as POI[] | undefined;
+          const center = payload.center as { lng: number; lat: number } | undefined;
+          const zoom = payload.zoom as number | undefined;
+
+          if (Array.isArray(pois) && pois.length > 0) {
+            mapStore.setPOIs(pois);
+          }
+          if (center && typeof center.lng === "number" && typeof center.lat === "number") {
+            mapStore.setCenter(center);
+          }
+          if (typeof zoom === "number") {
+            mapStore.setZoom(zoom);
           }
           break;
         }
 
         case "route_result": {
-          if (Array.isArray(event.data)) {
-            mapStore.setRoutes(event.data);
-          } else if (event.data && typeof event.data === "object") {
-            mapStore.setRoutes([event.data]);
+          // Backend sends: { daily_plans: DayPlan[], polylines: Polyline[] }
+          const payload = event.data as Record<string, unknown> | null;
+          if (!payload || typeof payload !== "object") break;
+
+          const dailyPlans = payload.daily_plans as unknown[] | undefined;
+          if (Array.isArray(dailyPlans)) {
+            mapStore.setRoutes(dailyPlans as RouteData[]);
+          }
+          break;
+        }
+
+        case "plan_summary": {
+          // Backend sends: { city: string, days: number }
+          const payload = event.data as Record<string, unknown> | null;
+          if (!payload || typeof payload !== "object") break;
+
+          const city = typeof payload.city === "string" ? payload.city : undefined;
+          const days = typeof payload.days === "number" ? payload.days : undefined;
+
+          if (city !== undefined && days !== undefined) {
+            mapStore.setPlanSummary({ city, days });
           }
           break;
         }
@@ -89,7 +117,6 @@ export const useChatStore = defineStore("chat", () => {
 
         case "thinking":
         case "tool_calling":
-        case "plan_summary":
           // These events are informational — no state update needed
           break;
       }

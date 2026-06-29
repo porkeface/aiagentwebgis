@@ -1,5 +1,5 @@
 import { getToken } from "./auth";
-import type { SSEEvent } from "../types";
+import type { SSEEvent, SSEEventType } from "../types";
 
 const BASE_URL = "/api/v1";
 
@@ -100,7 +100,28 @@ function parseSSEEvent(raw: string): SSEEvent | null {
     parsedData = rawData;
   }
 
-  const validTypes = [
+  // The backend always sends `event: message` on the SSE wire, wrapping the
+  // real event type inside the JSON payload: { type: "<event_type>", data: {...} }.
+  // Extract the actual type from the JSON envelope, falling back to the SSE
+  // event line for non-message events like "done".
+  let type: SSEEventType;
+  let innerData: unknown;
+
+  if (
+    parsedData &&
+    typeof parsedData === "object" &&
+    "type" in (parsedData as Record<string, unknown>)
+  ) {
+    const envelope = parsedData as Record<string, unknown>;
+    type = String(envelope.type) as SSEEventType;
+    innerData = envelope.data;
+  } else {
+    // Non-envelope events (e.g. SSE `event: done` with empty data)
+    type = eventType as SSEEventType;
+    innerData = parsedData;
+  }
+
+  const validTypes: SSEEventType[] = [
     "thinking",
     "tool_calling",
     "poi_result",
@@ -108,15 +129,16 @@ function parseSSEEvent(raw: string): SSEEvent | null {
     "plan_summary",
     "text",
     "error",
-  ] as const;
+  ];
 
-  const type = validTypes.includes(eventType as (typeof validTypes)[number])
-    ? (eventType as (typeof validTypes)[number])
-    : "text";
+  if (!validTypes.includes(type)) {
+    // Unknown event type — silently ignore (e.g. "done")
+    return null;
+  }
 
   return {
     type,
-    data: parsedData,
-    content: typeof parsedData === "string" ? parsedData : undefined,
+    data: innerData,
+    content: typeof innerData === "string" ? innerData : undefined,
   };
 }

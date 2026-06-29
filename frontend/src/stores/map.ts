@@ -2,6 +2,11 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { POI } from "@/types";
 
+export interface PlanSummary {
+  city: string;
+  days: number;
+}
+
 export interface RouteData {
   [key: string]: unknown;
 }
@@ -18,10 +23,12 @@ export const useMapStore = defineStore("map", () => {
   const selectedPOI = ref<POI | null>(null);
   const center = ref<MapCenter | null>(null);
   const zoom = ref<number>(13);
+  const planSummary = ref<PlanSummary | null>(null);
 
   // ── Getters ────────────────────────────────────────────────────────────────
   const poiCount = computed(() => pois.value.length);
   const hasSelection = computed(() => selectedPOI.value !== null);
+  const hasPlan = computed(() => planSummary.value !== null);
 
   // ── Actions ────────────────────────────────────────────────────────────────
   function setPOIs(newPOIs: POI[]): void {
@@ -46,6 +53,7 @@ export const useMapStore = defineStore("map", () => {
     routes.value = [];
     selectedPOI.value = null;
     center.value = null;
+    planSummary.value = null;
   }
 
   function setCenter(newCenter: MapCenter): void {
@@ -56,6 +64,10 @@ export const useMapStore = defineStore("map", () => {
     zoom.value = newZoom;
   }
 
+  function setPlanSummary(summary: PlanSummary): void {
+    planSummary.value = { ...summary };
+  }
+
   return {
     // state
     pois,
@@ -63,9 +75,11 @@ export const useMapStore = defineStore("map", () => {
     selectedPOI,
     center,
     zoom,
+    planSummary,
     // getters
     poiCount,
     hasSelection,
+    hasPlan,
     // actions
     setPOIs,
     setRoutes,
@@ -74,5 +88,6 @@ export const useMapStore = defineStore("map", () => {
     clearMap,
     setCenter,
     setZoom,
+    setPlanSummary,
   };
 });
