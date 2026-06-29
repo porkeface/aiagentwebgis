@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { LPolyline, LMarker, LTooltip } from '@vue-leaflet/vue-leaflet'
-import { divIcon } from 'leaflet'
+import type { Icon, IconOptions } from 'leaflet'
 import { useMapStore, type RouteData } from '@/stores/map'
+import { createDivIcon, DAY_COLORS } from '@/utils/constants'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface DailyPlan {
@@ -40,7 +41,7 @@ interface SegmentLabel {
 interface StopMarker {
   key: string
   latLng: [number, number]
-  icon: ReturnType<typeof divIcon>
+  icon: Icon<IconOptions>
   name: string
   category: string
   stopNumber: number
@@ -57,7 +58,6 @@ interface RouteLine {
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const DAY_COLORS = ['#1890ff', '#52c41a', '#fa8c16', '#a855f7'] as const
 const AVG_CITY_SPEED_KMH = 30
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ function estimateDurationMin(distanceKm: number): number {
  * Build a numbered circle divIcon for a POI stop along the route.
  */
 function buildStopIcon(dayColor: string, stopNumber: number) {
-  return divIcon({
+  return createDivIcon({
     className: 'route-stop-icon',
     html: `<div class="route-stop-inner" style="background:${dayColor};border-color:${dayColor}"><span>${stopNumber}</span></div>`,
     iconSize: [28, 28],
@@ -171,7 +171,7 @@ function findSegment(
 }
 
 /** Transparent zero-size icon for segment label anchors */
-const invisibleIcon = divIcon({
+const invisibleIcon = createDivIcon({
   className: 'route-segment-anchor',
   html: '',
   iconSize: [0, 0],

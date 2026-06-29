@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { LMarker, LPopup } from '@vue-leaflet/vue-leaflet'
-import { divIcon } from 'leaflet'
+import { createDivIcon } from '@/utils/constants'
 import type { POI } from '@/types'
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ const latLng = computed<[number, number]>(() => [props.poi.lat, props.poi.lng])
 
 // ── Custom DivIcon ───────────────────────────────────────────────────────────
 const markerIcon = computed(() =>
-  divIcon({
+  createDivIcon({
     className: 'poi-marker-icon',
     html: `<div class="poi-marker-inner"><span>${props.index + 1}</span></div>`,
     iconSize: [32, 32],

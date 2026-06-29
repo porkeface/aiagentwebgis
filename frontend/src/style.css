@@ -31,6 +31,11 @@
   --color-day-3: #fa8c16;
   --color-day-4: #a855f7;
 
+  /* ── Notes Colors ─────────────────────────────────────────────────── */
+  --color-note-bg: #fffbe6;
+  --color-note-border: #ffe58f;
+  --color-note-text: #8c6d1f;
+
   /* ── Spacing Tokens ───────────────────────────────────────────────────── */
   --space-xs: 4px;
   --space-sm: 8px;

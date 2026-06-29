@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { TripDayPOI, DayPlanDetail } from "@/types";
+import type { TripDayPOI, DayPlanDetail } from '@/types'
+import { DAY_COLORS } from '@/utils/constants'
 
 // ── Props & Emits ──────────────────────────────────────────────────────────
 interface Props {
@@ -76,8 +77,7 @@ function getTotalDuration(): number {
 }
 
 function getPOIColor(index: number): string {
-  const colors = ["#1890ff", "#52c41a", "#fa8c16", "#a855f7"];
-  return colors[index % colors.length];
+  return DAY_COLORS[index % DAY_COLORS.length]
 }
 
 // ── POI Click ───────────────────────────────────────────────────────────────
@@ -365,10 +365,10 @@ function onPOIClick(poi: TripDayPOI): void {
 
 .day-notes {
   padding: var(--space-md) var(--space-xl);
-  background: #fffbe6;
-  border-top: 1px solid #ffe58f;
+  background: var(--color-note-bg);
+  border-top: 1px solid var(--color-note-border);
   font-size: 13px;
-  color: #8c6d1f;
+  color: var(--color-note-text);
 }
 
 /* Responsive */
