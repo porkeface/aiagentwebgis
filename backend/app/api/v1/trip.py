@@ -25,7 +25,11 @@ class TripUpdate(BaseModel):
 
 # --- Endpoints ---
 
-@router.post("")
+@router.post(
+    "",
+    summary="Create a new trip",
+    description="Create a trip with city, duration, preferences. Returns auto-generated title and date range.",
+)
 async def create_trip_endpoint(
     trip_data: TripCreate,
     db: AsyncSession = Depends(get_session),
@@ -52,7 +56,11 @@ async def create_trip_endpoint(
     }
 
 
-@router.get("")
+@router.get(
+    "",
+    summary="List user trips",
+    description="List trips for the authenticated user with pagination, ordered by creation date.",
+)
 async def list_trips_endpoint(
     page: int = 1,
     size: int = 20,
@@ -88,7 +96,11 @@ async def list_trips_endpoint(
     }
 
 
-@router.get("/{trip_id}")
+@router.get(
+    "/{trip_id}",
+    summary="Get trip detail",
+    description="Get full trip detail with daily plans and POIs. Returns 404 if trip not found or not owned by user.",
+)
 async def get_trip_endpoint(
     trip_id: int,
     db: AsyncSession = Depends(get_session),
@@ -153,7 +165,11 @@ async def get_trip_endpoint(
     }
 
 
-@router.put("/{trip_id}")
+@router.put(
+    "/{trip_id}",
+    summary="Update a trip",
+    description="Update trip title, status, or notes. Returns 404 if not found or not owned by user.",
+)
 async def update_trip_endpoint(
     trip_id: int,
     updates: TripUpdate,
@@ -188,7 +204,11 @@ async def update_trip_endpoint(
     }
 
 
-@router.delete("/{trip_id}")
+@router.delete(
+    "/{trip_id}",
+    summary="Delete a trip",
+    description="Delete a trip and cascade all associated TripDay and TripDayPOI records. Returns 404 if not found.",
+)
 async def delete_trip_endpoint(
     trip_id: int,
     db: AsyncSession = Depends(get_session),

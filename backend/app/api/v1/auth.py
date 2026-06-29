@@ -12,7 +12,12 @@ from app.services.auth_service import create_token, hash_password, verify_passwo
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
 
-@router.post("/register", response_model=TokenResponse)
+@router.post(
+    "/register",
+    response_model=TokenResponse,
+    summary="Register a new user",
+    description="Create a new user account with hashed password. Returns JWT token. 409 if username already taken.",
+)
 async def register(
     request: RegisterRequest,
     db: AsyncSession = Depends(get_session),
@@ -56,7 +61,12 @@ async def register(
     return TokenResponse(access_token=token)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    summary="Login user",
+    description="Authenticate with username/password and receive a JWT token. Returns 401 on invalid credentials.",
+)
 async def login(
     request: LoginRequest,
     db: AsyncSession = Depends(get_session),

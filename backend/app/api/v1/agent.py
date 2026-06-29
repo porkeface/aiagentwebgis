@@ -101,7 +101,11 @@ async def _event_generator(
     yield _format_sse_event("done", {})
 
 
-@router.post("/chat")
+@router.post(
+    "/chat",
+    summary="Chat with AI travel agent",
+    description="Send a message to the AI agent and receive SSE-streamed events (thinking, tool_calling, poi_result, route_result, plan_summary, text, error, done).",
+)
 async def chat(request: ChatRequest) -> StreamingResponse:
     """Agent chat endpoint with SSE streaming.
 
