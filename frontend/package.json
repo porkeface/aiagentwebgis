@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@vue-leaflet/vue-leaflet": "^0.10.1",
     "element-plus": "^2.14.2",
     "leaflet": "^1.9.4",
     "pinia": "^3.0.4",
