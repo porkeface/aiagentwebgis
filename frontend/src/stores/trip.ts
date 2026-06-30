@@ -49,6 +49,21 @@ export const useTripStore = defineStore("trip", () => {
     }
   }
 
+  /**
+   * Fetch a trip detail and return it directly. Used by ChatPanel to load a
+   * saved trip onto the map without navigating away from the chat page.
+   */
+  async function fetchTripDetail(id: number): Promise<TripDetail | null> {
+    try {
+      currentTrip.value = await getTrip(id);
+      return currentTrip.value;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to fetch trip";
+      error.value = message;
+      return null;
+    }
+  }
+
   async function createTrip(data: TripCreateData): Promise<Trip | null> {
     loading.value = true;
     error.value = null;
@@ -161,6 +176,7 @@ export const useTripStore = defineStore("trip", () => {
     // actions
     fetchTrips,
     fetchTrip,
+    fetchTripDetail,
     createTrip,
     savePlan,
     updateTrip,

@@ -8,6 +8,8 @@ import PoiMarker from './PoiMarker.vue'
 import RouteLayer from './RouteLayer.vue'
 import ItineraryTimeline from './ItineraryTimeline.vue'
 import POIDetailCard from './POIDetailCard.vue'
+import TripListDrawer from './TripListDrawer.vue'
+import { useTripStore } from '@/stores/trip'
 
 // ── Constants ───────────────────────────────────────────────────────────────
 const DEFAULT_CENTER: [number, number] = [39.9, 116.4]
@@ -16,8 +18,10 @@ const FLY_DURATION = 1.2
 
 // ── Store ────────────────────────────────────────────────────────────────────
 const mapStore = useMapStore()
+const tripStore = useTripStore()
 
 // ── Reactive State ───────────────────────────────────────────────────────────
+const activePanel = ref<'trips' | null>(null)
 const pois = computed(() => mapStore.pois)
 const routes = computed(() => mapStore.routes)
 const hasRoutes = computed(() => routes.value.length > 0)
@@ -148,6 +152,24 @@ function onPoiSelect(poi: POI): void {
 function onPOICardClose(): void {
   mapStore.clearSelection()
 }
+
+function onTimelineClick(): void {
+  if (mapStore.timelineOpen) {
+    mapStore.timelineOpen = false
+  } else {
+    activePanel.value = null            // mutually exclusive
+    mapStore.timelineOpen = true
+  }
+}
+
+function onTripsClick(): void {
+  if (activePanel.value === 'trips') {
+    activePanel.value = null
+  } else {
+    mapStore.timelineOpen = false        // mutually exclusive
+    activePanel.value = 'trips'
+  }
+}
 </script>
 
 <template>
@@ -177,19 +199,44 @@ function onPOICardClose(): void {
       />
     </l-map>
 
-    <ItineraryTimeline v-if="hasRoutes && mapStore.timelineOpen" />
+    <!-- Top-left: segmented nav bar — 查看行程 + 历史规划 -->
+    <div class="map-navbar">
+      <button
+        v-if="hasRoutes"
+        class="map-navbar__btn"
+        :class="{ 'is-active': mapStore.timelineOpen }"
+        title="行程规划"
+        @click="onTimelineClick"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 6h18M3 12h12M3 18h6" stroke-linecap="round" />
+        </svg>
+        <span>行程规划</span>
+      </button>
+      <button
+        class="map-navbar__btn"
+        :class="{ 'is-active': activePanel === 'trips' }"
+        title="历史规划"
+        @click="onTripsClick"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M4 7l8-4 8 4-8 4-8-4z" />
+          <path d="M4 12l8 4 8-4M4 17l8 4 8-4" stroke-linejoin="round" />
+        </svg>
+        <span>历史规划</span>
+        <span v-if="tripStore.tripCount > 0" class="map-navbar__badge numeric">{{ tripStore.tripCount }}</span>
+      </button>
+    </div>
 
-    <button
-      v-if="hasRoutes && !mapStore.timelineOpen"
-      class="map-toggle-timeline"
-      title="展开行程面板"
-      @click="mapStore.toggleTimeline()"
-    >
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M3 6h18M3 12h12M3 18h6" stroke-linecap="round" />
-      </svg>
-      <span>查看行程</span>
-    </button>
+    <!-- 历史规划 panel — below the navbar -->
+    <div v-if="activePanel === 'trips'" class="map-panel">
+      <TripListDrawer @close="activePanel = null" />
+    </div>
+
+    <!-- 查看行程 panel — ItineraryTimeline in the same .map-panel slot -->
+    <div v-if="hasRoutes && mapStore.timelineOpen" class="map-panel">
+      <ItineraryTimeline />
+    </div>
 
     <button
       class="map-dark-toggle"
@@ -334,71 +381,90 @@ function onPOICardClose(): void {
   opacity: 1;
 }
 
-/* Timeline toggle */
-.map-toggle-timeline {
+/* Top-left segmented nav bar */
+.map-navbar {
   position: absolute;
   top: var(--space-xl);
   left: var(--space-xl);
-  z-index: 1100;
+  z-index: 1150;
+  display: flex;
+  gap: var(--space-2xs);
+  padding: var(--space-xs);
+  background: rgba(20, 24, 31, 0.78);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-md);
+}
+
+.map-navbar__btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-md) var(--space-lg);
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-hairline-strong);
   border-radius: var(--radius-pill);
   font-family: var(--font-sans);
   font-size: var(--text-meta);
   font-weight: 500;
+  color: var(--color-text-secondary);
   letter-spacing: var(--letter-spacing-wide);
   text-transform: uppercase;
-  box-shadow: var(--shadow-md);
   transition: all var(--duration-fast) var(--ease-out-expo);
+  white-space: nowrap;
+  background: transparent;
 }
 
-.map-toggle-timeline:hover {
-  background: var(--color-bg-overlay);
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  transform: translateY(-1px);
+.map-navbar__btn:hover {
+  color: var(--color-text-primary);
+  background: rgba(243, 236, 225, 0.04);
 }
 
-/* Theme toggle */
-.map-dark-toggle {
+.map-navbar__btn.is-active {
+  background: var(--color-text-primary);
+  color: var(--color-bg-deep);
+}
+
+.map-navbar__badge {
   position: absolute;
-  top: var(--space-xl);
-  right: calc(var(--sidebar-width) + var(--space-xl));
-  z-index: 1100;
-  width: 40px;
-  height: 40px;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--color-accent);
+  color: var(--color-bg-deep);
+  font-family: var(--font-sans);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  border-radius: var(--radius-pill);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-hairline-strong);
-  border-radius: var(--radius-circle);
-  box-shadow: var(--shadow-md);
-  transition: all var(--duration-fast) var(--ease-out-expo);
+  border: 2px solid var(--color-bg-elevated);
 }
 
-@media (max-width: 1024px) {
-  .map-dark-toggle {
-    right: calc(340px + var(--space-xl));
-  }
+/* Panel — sits below the navbar, inside the map container */
+.map-panel {
+  position: absolute;
+  top: calc(var(--space-xl) + 56px);
+  left: var(--space-xl);
+  z-index: 1100;
+  width: 360px;
+  max-height: calc(100vh - var(--space-xl) - 56px - var(--space-xl));
+  overflow: hidden;
+  border-radius: var(--radius-xl);
 }
 
-@media (max-width: 767px) {
-  .map-dark-toggle {
-    right: var(--space-xl);
-  }
-}
-
-.map-dark-toggle:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  transform: rotate(15deg);
+/* Fill the panel — both ItineraryTimeline and TripListDrawer */
+.map-panel :deep(.itin),
+.map-panel :deep(.trip-drawer) {
+  display: flex;
+  flex-direction: column;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
 }
 
 /* Atmospheric vignette + grain — must sit BELOW every UI overlay

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -17,10 +17,16 @@ class ChatSession(Base):
     """AI chat session with agent state."""
 
     __tablename__ = "chat_sessions"
+    __table_args__ = (
+        UniqueConstraint("user_id", "thread_id", name="uq_chat_sessions_user_thread"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    thread_id: Mapped[str] = mapped_column(
+        String(128), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(255), nullable=True)
     messages_json: Mapped[dict | list] = mapped_column(JSONB, nullable=True)

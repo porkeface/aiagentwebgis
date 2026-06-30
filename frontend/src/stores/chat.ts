@@ -2,7 +2,13 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { ChatMessage, POI, SSEEvent } from "@/types";
 import { sendChatMessage } from "@/api/agent";
-import { useMapStore, type RouteData } from "./map";
+import {
+  listChatSessions,
+  getChatSession,
+  deleteChatSession,
+  type ChatSessionSummary,
+} from "@/api/chat";
+import { useMapStore, type RouteData, type DailyPlan } from "./map";
 
 function generateSessionId(): string {
   return crypto.randomUUID();
@@ -14,7 +20,11 @@ export const useChatStore = defineStore("chat", () => {
   const sessionId = ref<string>(generateSessionId());
   const loading = ref(false);
   const error = ref<string | null>(null);
-  const lastUserMessage = ref<string>(""); // Store last message for retry
+  const lastUserMessage = ref<string>("");
+
+  // ── Chat history state ────────────────────────────────────────────────────
+  const historySessions = ref<ChatSessionSummary[]>([]);
+  const historyLoading = ref(false);
 
   // ── Getters ────────────────────────────────────────────────────────────────
   const lastMessage = computed(() =>
@@ -139,9 +149,17 @@ export const useChatStore = defineStore("chat", () => {
         }
 
         case "thinking":
-        case "tool_calling":
-          // These events are informational — no state update needed
+        case "tool_calling": {
+          const data = event.data as Record<string, unknown> | null;
+          const content = typeof data === "object" && data !== null && typeof data.content === "string"
+            ? data.content
+            : "";
+          // Prepend progress info before the final text response
+          if (content) {
+            assistantText = assistantText ? assistantText + "\n" + content : content;
+          }
           break;
+        }
       }
     };
 
@@ -197,6 +215,67 @@ export const useChatStore = defineStore("chat", () => {
     await sendMessage(content);
   }
 
+  // ── Chat history actions ──────────────────────────────────────────────────
+  async function fetchHistory(): Promise<void> {
+    historyLoading.value = true;
+    try {
+      const result = await listChatSessions(1, 50);
+      historySessions.value = result.items;
+    } catch {
+      // silently ignore — user sees empty state
+    } finally {
+      historyLoading.value = false;
+    }
+  }
+
+  async function loadSession(threadId: string): Promise<void> {
+    const session = await getChatSession(threadId);
+    const mapStore = useMapStore();
+
+    // Restore messages
+    messages.value = (session.messages || []).map((m) => ({
+      role: m.role as ChatMessage["role"],
+      content: m.content,
+      timestamp: m.timestamp || new Date().toISOString(),
+    }));
+
+    // Resume from this thread so new messages continue the conversation
+    sessionId.value = threadId;
+
+    // Restore map state from snapshot
+    const agentState = session.agent_state_json;
+    if (agentState && typeof agentState === "object") {
+      const snapshot = (agentState as Record<string, unknown>).map_snapshot as Record<string, unknown> | undefined;
+      if (snapshot) {
+        const pois = Array.isArray(snapshot.pois) ? snapshot.pois as POI[] : [];
+        const routes = Array.isArray(snapshot.routes)
+          ? (snapshot.routes as DailyPlan[])
+          : [];
+        const planSummary = snapshot.plan_summary as { city: string; days: number } | undefined;
+
+        if (pois.length > 0) mapStore.setPOIs(pois);
+        if (routes.length > 0) {
+          mapStore.setRoutes(routes);
+          mapStore.setActiveDay(0);
+        }
+        if (planSummary) mapStore.setPlanSummary(planSummary);
+      }
+    }
+  }
+
+  async function removeHistorySession(threadId: string): Promise<void> {
+    await deleteChatSession(threadId);
+    historySessions.value = historySessions.value.filter(
+      (s) => s.thread_id !== threadId,
+    );
+  }
+
+  function startNewSession(): void {
+    const mapStore = useMapStore();
+    resetSession();
+    mapStore.clearMap();
+  }
+
   return {
     // state
     messages,
@@ -204,6 +283,8 @@ export const useChatStore = defineStore("chat", () => {
     loading,
     error,
     lastUserMessage,
+    historySessions,
+    historyLoading,
     // getters
     lastMessage,
     messageCount,
@@ -214,5 +295,9 @@ export const useChatStore = defineStore("chat", () => {
     resetSession,
     clearError,
     retryLastMessage,
+    fetchHistory,
+    loadSession,
+    removeHistorySession,
+    startNewSession,
   };
 });

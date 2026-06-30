@@ -1,80 +1,64 @@
-"""POI search tool functions — wraps AmapService.search_pois / place-around.
-
-Pure Amap API calls — no local database fallback.
-"""
+"""POI search tools — wrapped for LangChain ReAct agent."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any
 
+from langchain_core.tools import tool
+
 logger = logging.getLogger(__name__)
 
 
-async def search_pois_tool(
+@tool
+async def search_pois(
     city: str,
     category: str,
-    keyword: str | None = None,
+    keyword: str = "",
 ) -> list[dict[str, Any]]:
-    """Search POIs by city, category, and optional keyword.
+    """搜索指定城市的 POI（景点/餐厅/购物等）。
 
-    Tries Amap API first. On failure returns an empty list with a warning
-    log (no local fallback — seed data has been removed).
+    根据城市名称和类别搜索兴趣点。类别必须是 Amap POI 类型之一：
+    风景名胜、博物馆、中餐厅、小吃快餐、购物中心、公园、动物园、展览馆、
+    寺庙、历史建筑、海滩、游乐园、剧院、咖啡馆、酒吧、体育场馆、大学、酒店 等。
 
     Args:
-        city: City name, e.g. "北京".
-        category: POI type category, e.g. "景点".
-        keyword: Optional search keyword, e.g. "故宫".
-
-    Returns:
-        List of POI dicts from AmapService. Empty list if API fails.
+        city: 城市名称，如 "北京"、"上海"
+        category: Amap POI 类型，如 "风景名胜"、"中餐厅"、"博物馆"
+        keyword: 可选的关键词进一步筛选，如 "故宫"
     """
     from agent.tools import get_amap
 
     amap = get_amap()
     try:
-        return await amap.search_pois(city=city, category=category, keyword=keyword)
+        return await amap.search_pois(city=city, category=category, keyword=keyword or None)
     except Exception as e:
-        logger.warning(
-            f"Amap API search_pois failed for city={city}, category={category}: {e}. "
-            "No local fallback available (seed data removed). Returning empty list."
-        )
+        logger.warning(f"search_pois failed for {city}/{category}: {e}")
         return []
 
 
-async def search_nearby_tool(
+@tool
+async def search_nearby(
     lng: float,
     lat: float,
     category: str,
     radius: int = 1000,
 ) -> list[dict[str, Any]]:
-    """Search nearby POIs around a coordinate.
+    """搜索某个坐标周边的 POI。
 
-    Tries Amap API first; falls back to empty list with warning on failure.
+    想知道某个地点附近有什么时使用。适合查找景点周围的餐厅、酒店等。
 
     Args:
-        lng: Longitude of the center point.
-        lat: Latitude of the center point.
-        category: POI type category, e.g. "景点".
-        radius: Search radius in meters (default 1000).
-
-    Returns:
-        List of nearby POI dicts.
+        lng: 中心点经度
+        lat: 中心点纬度
+        category: Amap POI 类型
+        radius: 搜索半径（米），默认 1000
     """
     from agent.tools import get_amap
 
     amap = get_amap()
     try:
-        return await amap.search_nearby(
-            lng=lng,
-            lat=lat,
-            category=category,
-            radius=radius,
-        )
+        return await amap.search_nearby(lng=lng, lat=lat, category=category, radius=radius)
     except Exception as e:
-        logger.warning(
-            f"Amap API search_nearby failed for lng={lng}, lat={lat}: {e}. "
-            "Returning empty list."
-        )
-        # Nearby search fallback: return empty (no city context for DB query)
+        logger.warning(f"search_nearby failed for ({lng},{lat}): {e}")
         return []

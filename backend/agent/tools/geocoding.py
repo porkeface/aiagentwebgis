@@ -1,43 +1,41 @@
-"""Geocoding tool functions — wraps AmapService.geocode / reverse_geocode."""
+"""Geocoding tools — wrapped for LangChain ReAct agent."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from langchain_core.tools import tool
 
-async def geocode_tool(
+
+@tool
+async def geocode(
     address: str,
-    city: str | None = None,
-) -> tuple[float, float]:
-    """Geocode an address to (longitude, latitude).
+    city: str = "",
+) -> dict[str, float]:
+    """将地址转换为经纬度坐标。
 
     Args:
-        address: Address string, e.g. "北京市东城区景山前街4号".
-        city: Optional city hint for disambiguation.
-
-    Returns:
-        Tuple of (longitude, latitude).
+        address: 地址字符串，如 "北京市东城区景山前街4号"
+        city: 可选的城市名，用于消除歧义
     """
     from agent.tools import get_amap
 
     amap = get_amap()
-    # Prepend city to address if provided, for better disambiguation
     full_address = f"{city}{address}" if city else address
-    return await amap.geocode(full_address)
+    lng, lat = await amap.geocode(full_address)
+    return {"lng": lng, "lat": lat}
 
 
-async def reverse_geocode_tool(
+@tool
+async def reverse_geocode(
     lng: float,
     lat: float,
 ) -> dict[str, str]:
-    """Reverse geocode coordinates to an address.
+    """将经纬度坐标反向转换为地址。
 
     Args:
-        lng: Longitude.
-        lat: Latitude.
-
-    Returns:
-        Dict with keys: address, city.
+        lng: 经度
+        lat: 纬度
     """
     from agent.tools import get_amap
 

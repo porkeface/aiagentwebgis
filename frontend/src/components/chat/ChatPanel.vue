@@ -1,26 +1,20 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useChatStore } from '@/stores/chat'
-import { useMapStore, type DailyPlan, type RoutePOI } from '@/stores/map'
-import { useTripStore } from '@/stores/trip'
+import { useMapStore } from '@/stores/map'
 import { getToken, getUsername, logout, setAuthChangeListener } from '@/api/auth'
-import type { Trip } from '@/types'
 import MessageBubble from './MessageBubble.vue'
 import AuthDialog from './AuthDialog.vue'
 
 // ── Store ────────────────────────────────────────────────────────────────────
 const chatStore = useChatStore()
 const mapStore = useMapStore()
-const tripStore = useTripStore()
-const router = useRouter()
 
 // ── Reactive State ───────────────────────────────────────────────────────────
 const inputText = ref('')
 const messageListRef = ref<HTMLElement | null>(null)
-const tripsOpen = ref(false)
-const saving = ref(false)
+const historyOpen = ref(false)
 const authOpen = ref(false)
 
 const username = ref<string | null>(getUsername())
@@ -52,25 +46,22 @@ function openAuth(): void {
 async function handleLogout(): Promise<void> {
   try {
     await logout()
-  } catch {}
+  } catch { /* ignore */ }
   refreshAuthState()
-  tripsOpen.value = false
+  historyOpen.value = false
+  chatStore.historySessions = []
   ElMessage.info('已退出登录')
 }
 
 function onAuthSuccess(): void {
   refreshAuthState()
-  tripsOpen.value = true
-  tripStore.fetchTrips(1, 30).catch(() => {
-    ElMessage.warning('加载行程列表失败')
-  })
+  historyOpen.value = true
+  chatStore.fetchHistory()
 }
 
 onMounted(() => {
   if (isLoggedIn.value) {
-    tripStore.fetchTrips(1, 30).catch(() => {
-      ElMessage.warning('加载行程列表失败')
-    })
+    chatStore.fetchHistory()
   }
 })
 
@@ -79,7 +70,6 @@ const messages = computed(() => chatStore.messages)
 const isLoading = computed(() => chatStore.loading)
 const errorMsg = computed(() => chatStore.error)
 const isEmpty = computed(() => messages.value.length === 0)
-const hasRoutes = computed(() => mapStore.routes.length > 0)
 
 // ── Suggestions (cover page) ─────────────────────────────────────────────────
 const suggestions: string[] = [
@@ -137,82 +127,37 @@ async function handleRetry(): Promise<void> {
   await chatStore.retryLastMessage()
 }
 
-async function handleSaveTrip(): Promise<void> {
-  if (!isLoggedIn.value) {
-    ElMessage.warning('保存行程需要先登录')
-    authOpen.value = true
-    return
+// ── Chat history drawer ──────────────────────────────────────────────────────
+async function toggleHistoryDrawer(): Promise<void> {
+  historyOpen.value = !historyOpen.value
+  if (historyOpen.value && isLoggedIn.value) {
+    await chatStore.fetchHistory()
   }
-  if (!hasRoutes.value) {
-    ElMessage.info('还没有行程可以保存')
-    return
-  }
+}
 
-  const summary = mapStore.planSummary
-  const city = summary?.city ?? '未命名城市'
-  const days = summary?.days ?? mapStore.routes.length
-
-  const daily_plans = (mapStore.routes as DailyPlan[]).map((r) => ({
-    day: r.day,
-    day_title: r.day_title || `第${r.day}天`,
-    pois: (r.pois ?? []).map((p: RoutePOI) => ({
-      id: p.id,
-      name: p.name,
-      category: p.category,
-      lng: p.lng,
-      lat: p.lat,
-      rating: p.rating ?? null,
-      address: p.address ?? null,
-      tags: p.tags ?? [],
-      photo: p.photo ?? undefined,
-    })),
-    total_distance_km: r.total_distance_km ?? 0,
-  }))
-
-  saving.value = true
+async function openHistorySession(threadId: string): Promise<void> {
+  historyOpen.value = false
   try {
-    const trip = await tripStore.savePlan({
-      city,
-      days,
-      daily_plans,
-    })
-    if (trip) {
-      ElMessage.success({
-        message: `行程已保存 (#${trip.id})`,
-        duration: 2500,
-      })
-      tripStore.clearLastSaved()
-    } else {
-      ElMessage.error(tripStore.error ?? '保存失败，请稍后重试')
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '保存失败'
-    ElMessage.error(msg)
-  } finally {
-    saving.value = false
+    await chatStore.loadSession(threadId)
+    ElMessage.success('已恢复对话')
+  } catch {
+    ElMessage.error('加载对话失败')
   }
 }
 
-async function toggleTripsDrawer(): Promise<void> {
-  tripsOpen.value = !tripsOpen.value
-  if (tripsOpen.value && isLoggedIn.value) {
-    await tripStore.fetchTrips(1, 30)
-  }
-}
-
-function openTrip(trip: Trip): void {
-  tripsOpen.value = false
-  router.push(`/trips/${trip.id}`)
-}
-
-async function removeTrip(trip: Trip, event: Event): Promise<void> {
+async function removeHistorySession(threadId: string, event: Event): Promise<void> {
   event.stopPropagation()
-  const ok = await tripStore.deleteTrip(trip.id)
-  if (ok) {
-    ElMessage.success('行程已删除')
-  } else {
-    ElMessage.error(tripStore.error ?? '删除失败')
+  try {
+    await chatStore.removeHistorySession(threadId)
+    ElMessage.success('对话已删除')
+  } catch {
+    ElMessage.error('删除失败')
   }
+}
+
+function handleNewSession(): void {
+  historyOpen.value = false
+  chatStore.startNewSession()
 }
 </script>
 
@@ -236,15 +181,16 @@ async function removeTrip(trip: Trip, event: Event): Promise<void> {
       <div class="chat-panel__actions">
         <button
           class="chat-panel__icon-btn"
-          :class="{ 'is-active': tripsOpen }"
-          title="我的行程"
-          @click="toggleTripsDrawer"
+          :class="{ 'is-active': historyOpen }"
+          title="对话历史"
+          @click="toggleHistoryDrawer"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4">
-            <path d="M4 6h16M4 12h12M4 18h8" stroke-linecap="round" />
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 6v6l4 2" stroke-linecap="round" />
           </svg>
-          <span v-if="tripStore.tripCount > 0" class="chat-panel__badge numeric">
-            {{ tripStore.tripCount }}
+          <span v-if="chatStore.historySessions.length > 0" class="chat-panel__badge numeric">
+            {{ chatStore.historySessions.length }}
           </span>
         </button>
         <button
@@ -266,15 +212,15 @@ async function removeTrip(trip: Trip, event: Event): Promise<void> {
       </div>
     </header>
 
-    <!-- ── My Trips Drawer ──────────────────────────────────────────── -->
+    <!-- ── Chat History Drawer ──────────────────────────────────────────── -->
     <transition name="drawer">
-      <div v-if="tripsOpen" class="chat-panel__drawer">
+      <div v-if="historyOpen" class="chat-panel__drawer">
         <div class="drawer-head">
           <div class="drawer-head__title">
-            <span class="eyebrow">Collection</span>
-            <h2 class="serif">My Itineraries</h2>
+            <span class="eyebrow">Archive</span>
+            <h2 class="serif">Chat History</h2>
           </div>
-          <button class="drawer-close" @click="tripsOpen = false">
+          <button class="drawer-close" @click="historyOpen = false">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" />
             </svg>
@@ -288,8 +234,8 @@ async function removeTrip(trip: Trip, event: Event): Promise<void> {
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
             </div>
-            <h3 class="serif drawer-empty__title">Sign in to begin</h3>
-            <p class="drawer-empty__desc">Your saved journeys await behind a private door.</p>
+            <h3 class="serif drawer-empty__title">Sign in to save chats</h3>
+            <p class="drawer-empty__desc">Your conversations are saved so you can pick up where you left off.</p>
             <button class="drawer-cta" @click="openAuth">
               <span>Enter</span>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -297,43 +243,48 @@ async function removeTrip(trip: Trip, event: Event): Promise<void> {
               </svg>
             </button>
           </div>
-          <div v-else-if="tripStore.loading" class="drawer-empty">
+          <div v-else-if="chatStore.historyLoading" class="drawer-empty">
             <p>Loading…</p>
           </div>
-          <div v-else-if="tripStore.trips.length === 0" class="drawer-empty">
-            <p class="serif">No saved journeys yet.</p>
-            <p class="drawer-hint">Plan a route, then save it here.</p>
+          <div v-else-if="chatStore.historySessions.length === 0" class="drawer-empty">
+            <p class="serif">No conversations yet.</p>
+            <p class="drawer-hint">Send a message and it will be saved here.</p>
           </div>
-          <ul v-else class="drawer-list">
-            <li
-              v-for="trip in tripStore.trips"
-              :key="trip.id"
-              class="drawer-item"
-              @click="openTrip(trip)"
-            >
-              <div class="drawer-item-main">
-                <div class="drawer-item-meta">
-                  <span class="numeric">{{ trip.days }}d</span>
-                  <span class="drawer-item-status" :class="`is-${trip.status}`">
-                    {{ trip.status === 'planned' ? 'Planned' : trip.status === 'draft' ? 'Draft' : trip.status }}
-                  </span>
-                </div>
-                <div class="drawer-item-title serif">{{ trip.city }}</div>
-                <div class="drawer-item-sub">
-                  {{ new Date(trip.created_at).toLocaleDateString() }}
-                </div>
-              </div>
-              <button
-                class="drawer-item-del"
-                title="删除行程"
-                @click="removeTrip(trip, $event)"
+          <div v-else>
+            <ul class="drawer-list">
+              <li
+                v-for="session in chatStore.historySessions"
+                :key="session.thread_id"
+                class="drawer-item"
+                @click="openHistorySession(session.thread_id)"
               >
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                </svg>
-              </button>
-            </li>
-          </ul>
+                <div class="drawer-item-main">
+                  <div class="drawer-item-meta">
+                    <span class="numeric">{{ session.message_count }} 消息</span>
+                  </div>
+                  <div class="drawer-item-title serif">{{ session.title || '未命名对话' }}</div>
+                  <div class="drawer-item-sub">
+                    {{ new Date(session.updated_at).toLocaleDateString() }}
+                  </div>
+                </div>
+                <button
+                  class="drawer-item-del"
+                  title="删除对话"
+                  @click="removeHistorySession(session.thread_id, $event)"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  </svg>
+                </button>
+              </li>
+            </ul>
+            <button class="new-session-btn" @click="handleNewSession">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 5v14M5 12h14" stroke-linecap="round" />
+              </svg>
+              <span>新对话</span>
+            </button>
+          </div>
         </div>
       </div>
     </transition>
@@ -393,32 +344,6 @@ async function removeTrip(trip: Trip, event: Event): Promise<void> {
       </div>
     </div>
 
-    <!-- ── Save Trip Banner ─────────────────────────────────────────── -->
-    <transition name="banner">
-      <div v-if="hasRoutes && !isLoading" class="chat-panel__save">
-        <div class="chat-panel__save-info">
-          <div class="chat-panel__save-icon">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4">
-              <path d="M4 7l8-4 8 4-8 4-8-4z" />
-              <path d="M4 12l8 4 8-4M4 17l8 4 8-4" stroke-linejoin="round" />
-            </svg>
-          </div>
-          <div class="chat-panel__save-text">
-            <span class="eyebrow">Ready to archive</span>
-            <strong class="serif">Itinerary plotted</strong>
-          </div>
-        </div>
-        <button
-          class="chat-panel__save-btn"
-          :disabled="saving"
-          @click="handleSaveTrip"
-        >
-          <span v-if="!saving">Save</span>
-          <span v-else class="serif italic">Saving…</span>
-        </button>
-      </div>
-    </transition>
-
     <!-- ── Input Area ─────────────────────────────────────────────────── -->
     <div class="chat-panel__input">
       <div class="chat-panel__input-field">
@@ -454,6 +379,32 @@ async function removeTrip(trip: Trip, event: Event): Promise<void> {
 </template>
 
 <style scoped>
+/* ── New session button ────────────────────────────────────────────────── */
+.new-session-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  width: 100%;
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  background: transparent;
+  color: var(--color-accent);
+  border: 1px dashed var(--color-accent);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+  transition: all var(--duration-fast) var(--ease-out-expo);
+}
+
+.new-session-btn:hover {
+  background: var(--color-accent-soft);
+}
+
+/* ── Keep all existing styles below ───────────────────────────────────── */
 .chat-panel {
   display: flex;
   flex-direction: column;
@@ -619,7 +570,7 @@ async function removeTrip(trip: Trip, event: Event): Promise<void> {
   color: var(--color-accent);
 }
 
-/* ── Trips Drawer ─────────────────────────────────────────────────────── */
+/* ── Chat History Drawer ─────────────────────────────────────────────────── */
 .drawer-enter-active, .drawer-leave-active {
   transition: max-height var(--duration-slow) var(--ease-out-expo), opacity var(--duration-normal);
 }
@@ -1050,94 +1001,6 @@ async function removeTrip(trip: Trip, event: Event): Promise<void> {
 
 .chat-panel__dismiss-btn:hover {
   border-color: var(--color-text-primary);
-}
-
-/* ── Save Trip Banner ────────────────────────────────────────────────── */
-.banner-enter-active, .banner-leave-active {
-  transition: all var(--duration-slow) var(--ease-out-expo);
-}
-.banner-enter-from, .banner-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-.chat-panel__save {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md);
-  padding: var(--space-md) var(--space-2xl);
-  background: var(--color-accent-soft);
-  border-top: 1px solid var(--color-accent);
-  position: relative;
-  overflow: hidden;
-}
-
-.chat-panel__save::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
-}
-
-.chat-panel__save-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  flex: 1;
-  min-width: 0;
-}
-
-.chat-panel__save-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-accent);
-  flex-shrink: 0;
-}
-
-.chat-panel__save-text {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2xs);
-  min-width: 0;
-}
-
-.chat-panel__save-text strong {
-  font-family: var(--font-serif);
-  font-size: var(--text-body);
-  font-weight: 500;
-  color: var(--color-text-primary);
-  line-height: 1.2;
-}
-
-.chat-panel__save-btn {
-  padding: var(--space-sm) var(--space-xl);
-  background: var(--color-accent);
-  color: var(--color-bg-deep);
-  border-radius: var(--radius-pill);
-  font-family: var(--font-sans);
-  font-size: var(--text-meta);
-  font-weight: 500;
-  letter-spacing: var(--letter-spacing-wide);
-  text-transform: uppercase;
-  transition: all var(--duration-fast) var(--ease-out-expo);
-}
-
-.chat-panel__save-btn:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-accent);
-}
-
-.chat-panel__save-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* ── Input Area ───────────────────────────────────────────────────────── */

@@ -76,6 +76,18 @@ function hexToRgb(hex: string): string {
     const b = parseInt(cleaned.slice(4, 6), 16);
     return `${r},${g},${b}`;
 }
+
+const TIME_SLOT_LABELS: Record<string, string> = {
+    morning: "上午",
+    noon: "午餐",
+    afternoon: "下午",
+    evening: "晚间",
+};
+
+function formatTimeSlot(slot: string | undefined): string {
+    if (!slot) return "";
+    return TIME_SLOT_LABELS[slot] || slot;
+}
 </script>
 
 <template>
@@ -95,7 +107,7 @@ function hexToRgb(hex: string): string {
             <button
                 class="itin__close"
                 title="收起行程面板"
-                @click="mapStore.toggleTimeline()"
+                @click="mapStore.closeTimeline()"
             >
                 <svg
                     viewBox="0 0 24 24"
@@ -225,6 +237,12 @@ function hexToRgb(hex: string): string {
                                 {{ poi.name }}
                             </div>
                             <div class="itin__stop-meta">
+                                <span
+                                    v-if="poi.time_slot"
+                                    class="itin__chip itin__chip--time-slot"
+                                >
+                                    {{ formatTimeSlot(poi.time_slot) }}
+                                </span>
                                 <span v-if="poi.category" class="itin__chip">{{
                                     poi.category
                                 }}</span>
@@ -292,18 +310,9 @@ function hexToRgb(hex: string): string {
 
 <style scoped>
 .itin {
-    position: absolute;
-    top: var(--space-xl);
-    left: var(--space-xl);
-    bottom: var(--space-xl);
     width: var(--timeline-width);
     max-width: 340px;
-    /* Above leaflet popup-pane (700) and any other map overlay so the
-       timeline never gets covered by route tooltips or POI popups.
-       NOTE: do NOT redeclare z-index below — CSS resolves duplicates
-       in source order, so the later declaration wins regardless of
-       value. */
-    z-index: 1100;
+    height: 100%;
     background: var(--color-bg-base);
     backdrop-filter: blur(20px) saturate(1.4);
     -webkit-backdrop-filter: blur(20px) saturate(1.4);
@@ -313,18 +322,6 @@ function hexToRgb(hex: string): string {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    animation: itin-slide-in var(--duration-slower) var(--ease-out-expo);
-}
-
-@keyframes itin-slide-in {
-    from {
-        opacity: 0;
-        transform: translateX(-12px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
 }
 
 /* ── Header ───────────────────────────────────────────────────────────── */
@@ -669,6 +666,17 @@ function hexToRgb(hex: string): string {
     color: var(--color-amber);
     background: var(--color-amber-soft);
     border-color: var(--color-amber);
+}
+
+.itin__chip--time-slot {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--color-accent);
+    background: rgba(232, 98, 60, 0.08);
+    border-color: rgba(232, 98, 60, 0.25);
 }
 
 .itin__stop-next {

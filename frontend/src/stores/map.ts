@@ -29,6 +29,9 @@ export interface RoutePOI {
   photo?: string | null;
   description?: string | null;
   review_count?: number | null;
+  time_slot?: string;        // "morning" | "noon" | "afternoon" | "evening"
+  visit_duration_min?: number;
+  meal_type?: string;        // "breakfast" | "lunch" | "dinner" | null
   [key: string]: unknown;
 }
 
@@ -235,6 +238,11 @@ export const useMapStore = defineStore("map", () => {
     timelineOpen.value = !timelineOpen.value;
   }
 
+  /** Let MapView sync timelineOpen when ItineraryTimeline's close button fires. */
+  function closeTimeline(): void {
+    timelineOpen.value = false;
+  }
+
   return {
     // state
     pois,
@@ -265,5 +273,6 @@ export const useMapStore = defineStore("map", () => {
     setPlanSummary,
     setActiveDay,
     toggleTimeline,
+    closeTimeline,
   };
 });
