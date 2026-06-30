@@ -177,18 +177,6 @@ function onPOICardClose(): void {
       />
     </l-map>
 
-    <!-- Editorial brand mark, anchored bottom-left -->
-    <div class="map-brand">
-      <div class="map-brand__mark">
-        <span class="map-brand__rule"></span>
-        <span class="map-brand__eyebrow">ATELIER</span>
-      </div>
-      <div class="map-brand__title">Travel Atlas</div>
-      <div class="map-brand__meta">
-        <span class="serif italic">A curated journey, plotted</span>
-      </div>
-    </div>
-
     <ItineraryTimeline v-if="hasRoutes && mapStore.timelineOpen" />
 
     <button
@@ -280,67 +268,6 @@ function onPOICardClose(): void {
 }
 .map-container:not(.dark-mode) :deep(.leaflet-container) {
   background: #f1ebe1;
-}
-
-/* Editorial brand mark */
-.map-brand {
-  position: absolute;
-  left: var(--space-xl);
-  bottom: var(--space-xl);
-  /* Above leaflet control-container (z-index 1000) so the brand mark
-     is never occluded by the zoom/attribution pills. */
-  z-index: 1100;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-  pointer-events: none;
-  user-select: none;
-  animation: brand-fade-in var(--duration-slower) var(--ease-out-expo) 200ms backwards;
-}
-
-@keyframes brand-fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.map-brand__mark {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  color: var(--color-text-primary);
-}
-
-.map-brand__rule {
-  width: 28px;
-  height: 1px;
-  background: currentColor;
-  opacity: 0.6;
-}
-
-.map-brand__eyebrow {
-  font-family: var(--font-sans);
-  font-size: var(--text-caption);
-  font-weight: 500;
-  letter-spacing: var(--letter-spacing-eyebrow);
-  text-transform: uppercase;
-}
-
-.map-brand__title {
-  font-family: var(--font-serif);
-  font-size: var(--text-headline);
-  font-weight: 500;
-  line-height: 1;
-  color: var(--color-text-primary);
-  letter-spacing: var(--letter-spacing-tight);
-}
-
-.map-brand__meta {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: var(--text-meta);
-  color: var(--color-text-secondary);
-  letter-spacing: 0.01em;
-  margin-top: var(--space-2xs);
 }
 
 /* Day filter — editorial numbered tabs */
