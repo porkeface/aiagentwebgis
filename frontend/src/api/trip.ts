@@ -15,6 +15,35 @@ export interface TripUpdateData {
   status?: string;
 }
 
+/** Shape of one POI stop inside a save-plan day */
+export interface SavePlanPOI {
+  id: number | string;
+  name: string;
+  category: string;
+  lng: number;
+  lat: number;
+  rating?: number | null;
+  address?: string | null;
+  tags?: string[];
+}
+
+/** Shape of one day inside a save-plan request */
+export interface SavePlanDay {
+  day: number;
+  day_title?: string;
+  pois: SavePlanPOI[];
+  total_distance_km: number;
+  total_duration_min?: number;
+}
+
+/** Body of POST /trips/save-plan */
+export interface SavePlanData {
+  city: string;
+  days: number;
+  title?: string;
+  daily_plans: SavePlanDay[];
+}
+
 /** Backend envelope shape: { success: boolean; data?: T } */
 interface Envelope<T> {
   success: boolean;
@@ -47,6 +76,19 @@ export async function createTrip(data: TripCreateData): Promise<Trip> {
   return res.data;
 }
 
+/**
+ * Persist a full AI planner output as a Trip.
+ * Throws if the request fails (e.g. 401 if not logged in, 400 on bad input).
+ */
+export async function savePlan(data: SavePlanData): Promise<Trip> {
+  const res = await request<Envelope<Trip>>("/trips/save-plan", {
+    method: "POST",
+    body: data,
+    headers: authHeaders(),
+  });
+  return res.data;
+}
+
 export async function listTrips(page = 1, size = 20): Promise<Trip[]> {
   const query = new URLSearchParams({
     page: String(page),
@@ -67,7 +109,7 @@ export async function getTrip(id: number): Promise<TripDetail> {
 
 export async function updateTrip(id: number, data: TripUpdateData): Promise<Trip> {
   const res = await request<Envelope<Trip>>(`/trips/${id}`, {
-    method: "PATCH",
+    method: "PUT",
     body: data,
     headers: authHeaders(),
   });

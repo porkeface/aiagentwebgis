@@ -47,51 +47,67 @@ export const useChatStore = defineStore("chat", () => {
 
     // Accumulate text for the assistant response
     let assistantText = "";
+    const mapStore = useMapStore();
 
     const handleEvent = (event: SSEEvent): void => {
-      const mapStore = useMapStore();
 
       switch (event.type) {
         case "poi_result": {
-          // Backend sends: { pois: POI[], center: {lng, lat}, zoom?: number }
-          const payload = event.data as Record<string, unknown> | null;
-          if (!payload || typeof payload !== "object") break;
+          // event.data = { pois, center, zoom } — direct from FormatterNode
+          const data = event.data as Record<string, unknown> | null;
+          if (!data || typeof data !== "object") break;
 
-          const pois = payload.pois as POI[] | undefined;
-          const center = payload.center as { lng: number; lat: number } | undefined;
-          const zoom = payload.zoom as number | undefined;
+          const pois = data.pois as POI[] | undefined;
+          const center = data.center as { lng: number; lat: number } | undefined;
+          const zoom = data.zoom as number | undefined;
 
-          if (Array.isArray(pois) && pois.length > 0) {
-            mapStore.setPOIs(pois);
+          // Filter out POIs with invalid coordinates rather than rejecting the whole batch.
+          // Even an empty valid list should clear stale markers via setPOIs([]).
+          const validPois = Array.isArray(pois)
+            ? pois.filter(
+                (p) =>
+                  p &&
+                  typeof p.lat === "number" &&
+                  typeof p.lng === "number" &&
+                  Number.isFinite(p.lat) &&
+                  Number.isFinite(p.lng),
+              )
+            : [];
+
+          if (Array.isArray(pois)) {
+            mapStore.setPOIs(validPois);
           }
           if (center && typeof center.lng === "number" && typeof center.lat === "number") {
             mapStore.setCenter(center);
           }
-          if (typeof zoom === "number") {
+          if (typeof zoom === "number" && Number.isFinite(zoom)) {
             mapStore.setZoom(zoom);
           }
           break;
         }
 
         case "route_result": {
-          // Backend sends: { daily_plans: DayPlan[], polylines: Polyline[] }
-          const payload = event.data as Record<string, unknown> | null;
-          if (!payload || typeof payload !== "object") break;
+          // event.data = { daily_plans, polylines } — direct from FormatterNode
+          const data = event.data as Record<string, unknown> | null;
+          if (!data || typeof data !== "object") break;
 
-          const dailyPlans = payload.daily_plans as unknown[] | undefined;
+          const dailyPlans = data.daily_plans as unknown[] | undefined;
           if (Array.isArray(dailyPlans)) {
+            mapStore.setPOIs([]);
             mapStore.setRoutes(dailyPlans as RouteData[]);
+            mapStore.clearSelection();
+            mapStore.setActiveDay(0);
           }
           break;
         }
 
         case "plan_summary": {
-          // Backend sends: { city: string, days: number }
-          const payload = event.data as Record<string, unknown> | null;
-          if (!payload || typeof payload !== "object") break;
+          // event.data = { city, days } — direct from FormatterNode
+          const data = event.data as Record<string, unknown> | null;
+          if (!data || typeof data !== "object") break;
 
-          const city = typeof payload.city === "string" ? payload.city : undefined;
-          const days = typeof payload.days === "number" ? payload.days : undefined;
+          const city = typeof data.city === "string" ? data.city : undefined;
+          const days = typeof data.days === "number" ? data.days : undefined;
 
           if (city !== undefined && days !== undefined) {
             mapStore.setPlanSummary({ city, days });
@@ -100,8 +116,10 @@ export const useChatStore = defineStore("chat", () => {
         }
 
         case "text": {
-          const text = typeof event.content === "string"
-            ? event.content
+          // event.data = { content: "actual text" } — direct from FormatterNode
+          const data = event.data as Record<string, unknown> | null;
+          const text = typeof data === "object" && data !== null && typeof data.content === "string"
+            ? data.content
             : typeof event.data === "string"
               ? event.data
               : "";
@@ -158,21 +176,25 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   async function retryLastMessage(): Promise<void> {
-    if (!lastUserMessage.value || loading.value) return;
+    const content = lastUserMessage.value?.trim()
+    if (!content || loading.value) return
     error.value = null;
-    // Remove the last user message and any trailing error/assistant messages
-    // from the failed attempt before re-sending to avoid duplicates.
+
+    // Find the most recent user message and drop everything from that point
+    // forward. This preserves the conversation history before the failed
+    // attempt instead of nuking every prior assistant turn.
     const msgs = messages.value;
-    let cutIndex = msgs.length;
-    // Walk backwards: remove trailing assistant/error messages, then the user message.
-    while (cutIndex > 0 && msgs[cutIndex - 1].role !== "user") {
-      cutIndex--;
+    const lastUserIdx = (() => {
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i]?.role === "user") return i;
+      }
+      return -1;
+    })();
+    if (lastUserIdx >= 0) {
+      messages.value = msgs.slice(0, lastUserIdx);
     }
-    if (cutIndex > 0 && msgs[cutIndex - 1].role === "user") {
-      // cutIndex now points at the last user message — remove it too.
-    }
-    messages.value = msgs.slice(0, cutIndex);
-    await sendMessage(lastUserMessage.value);
+
+    await sendMessage(content);
   }
 
   return {

@@ -7,8 +7,9 @@ import {
   createTrip as apiCreateTrip,
   updateTrip as apiUpdateTrip,
   deleteTrip as apiDeleteTrip,
+  savePlan as apiSavePlan,
 } from "@/api/trip";
-import type { TripCreateData, TripUpdateData } from "@/api/trip";
+import type { TripCreateData, TripUpdateData, SavePlanData } from "@/api/trip";
 
 export const useTripStore = defineStore("trip", () => {
   // ── State ──────────────────────────────────────────────────────────────────
@@ -16,6 +17,7 @@ export const useTripStore = defineStore("trip", () => {
   const currentTrip = ref<TripDetail | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  const lastSavedTripId = ref<number | null>(null);
 
   // ── Getters ────────────────────────────────────────────────────────────────
   const tripCount = computed(() => trips.value.length);
@@ -63,12 +65,42 @@ export const useTripStore = defineStore("trip", () => {
     }
   }
 
+  /**
+   * Persist the AI planner's output as a full Trip.
+   * Returns the created Trip on success, or throws on failure (so the caller
+   * can show a user-friendly toast). Also stores the saved id so the UI
+   * can offer a "View saved trip" action.
+   */
+  async function savePlan(data: SavePlanData): Promise<Trip | null> {
+    loading.value = true;
+    error.value = null;
+    try {
+      const trip = await apiSavePlan(data);
+      trips.value = [...trips.value, trip];
+      lastSavedTripId.value = trip.id;
+      return trip;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to save trip";
+      error.value = message;
+      return null;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   async function updateTrip(id: number, data: TripUpdateData): Promise<Trip | null> {
     loading.value = true;
     error.value = null;
     try {
       const updated = await apiUpdateTrip(id, data);
-      trips.value = trips.value.map((t) => (t.id === id ? updated : t));
+      // Only merge top-level scalar fields — never let the server response
+      // overwrite a populated daily_plans / currentTrip.daily_plans with a
+      // stale or null value.
+      const { daily_plans: _omitted, ...safeUpdated } = updated as Trip & { daily_plans?: unknown };
+      trips.value = trips.value.map((t) => (t.id === id ? { ...t, ...safeUpdated } : t));
+      if (currentTrip.value?.id === id) {
+        currentTrip.value = { ...currentTrip.value, ...safeUpdated };
+      }
       return updated;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to update trip";
@@ -88,6 +120,9 @@ export const useTripStore = defineStore("trip", () => {
       if (currentTrip.value?.id === id) {
         currentTrip.value = null;
       }
+      if (lastSavedTripId.value === id) {
+        lastSavedTripId.value = null;
+      }
       return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to delete trip";
@@ -102,8 +137,16 @@ export const useTripStore = defineStore("trip", () => {
     error.value = null;
   }
 
+  function setError(msg: string): void {
+    error.value = msg;
+  }
+
   function clearCurrentTrip(): void {
     currentTrip.value = null;
+  }
+
+  function clearLastSaved(): void {
+    lastSavedTripId.value = null;
   }
 
   return {
@@ -112,15 +155,19 @@ export const useTripStore = defineStore("trip", () => {
     currentTrip,
     loading,
     error,
+    lastSavedTripId,
     // getters
     tripCount,
     // actions
     fetchTrips,
     fetchTrip,
     createTrip,
+    savePlan,
     updateTrip,
     deleteTrip,
     clearError,
+    setError,
     clearCurrentTrip,
+    clearLastSaved,
   };
 });

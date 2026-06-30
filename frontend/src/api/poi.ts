@@ -1,4 +1,4 @@
-import { request } from "./http";
+import { request, authHeaders } from "./http";
 import type { POI } from "../types";
 
 export interface POISearchParams {
@@ -9,6 +9,14 @@ export interface POISearchParams {
   size?: number;
 }
 
+interface POISearchResponse {
+  success: boolean;
+  data: {
+    total: number;
+    items: POI[];
+  };
+}
+
 export async function searchPOIs(params: POISearchParams): Promise<POI[]> {
   const query = new URLSearchParams();
   query.set("city", params.city);
@@ -17,5 +25,9 @@ export async function searchPOIs(params: POISearchParams): Promise<POI[]> {
   if (params.page !== undefined) query.set("page", String(params.page));
   if (params.size !== undefined) query.set("size", String(params.size));
 
-  return request<POI[]>(`/poi/search?${query.toString()}`);
+  const res = await request<POISearchResponse>(
+    `/poi/search?${query.toString()}`,
+    { method: "GET", headers: authHeaders() },
+  );
+  return res.data.items;
 }

@@ -1,14 +1,18 @@
 // ── POI ────────────────────────────────────────────────────────────────────────
 export interface POI {
-  id: number;
+  id: number | string;
   name: string;
   category: string;
   address: string | null;
   lng: number;
   lat: number;
-  rating: number;
-  review_count: number;
+  rating: number | null;
+  review_count: number | null;
   tags: string[];
+  /** First photo URL from Amap API */
+  photo?: string;
+  /** Short intro / description text */
+  description?: string;
 }
 
 // ── Trip ─────────────────────────────────────────────────────────────────────

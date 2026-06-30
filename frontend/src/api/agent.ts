@@ -65,7 +65,10 @@ export async function sendChatMessage(
     }
   }
 
-  // Process any remaining buffer
+  // Flush any remaining bytes from the TextDecoder (handles the case where
+  // the stream ends mid-UTF-8 sequence — without this, the last Chinese
+  // character can be lost or corrupted).
+  buffer += decoder.decode();
   if (buffer.trim()) {
     const event = parseSSEEvent(buffer);
     if (event) {

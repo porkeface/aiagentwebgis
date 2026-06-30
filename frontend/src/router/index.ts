@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
+import { getToken } from "@/api/auth";
 
 const routes: RouteRecordRaw[] = [
   {
@@ -10,7 +11,22 @@ const routes: RouteRecordRaw[] = [
     path: "/trip/:id",
     name: "trip-detail",
     component: () => import("@/views/TripDetailView.vue"),
-    props: (route) => ({ id: Number(route.params.id) }),
+    props: (route) => {
+      const raw = route.params.id;
+      const id = typeof raw === "string" ? Number(raw) : NaN;
+      return { id: Number.isFinite(id) ? id : null };
+    },
+    beforeEnter: () => {
+      // Trip detail requires auth — bounce unauthenticated users back to home
+      // with a friendly prompt instead of landing on a dead 401 page.
+      if (!getToken()) {
+        return {
+          name: "home",
+          query: { auth: "required", redirect: typeof window !== "undefined" ? window.location.pathname : undefined },
+        };
+      }
+      return true;
+    },
   },
   {
     path: "/:pathMatch(.*)*",
@@ -22,7 +38,7 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior: () => ({ top: 0 }),
+  scrollBehavior: (_to, _from, savedPosition) => savedPosition ?? { top: 0 },
 });
 
 export default router;

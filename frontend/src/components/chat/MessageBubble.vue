@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { ChatMessage } from '@/types'
 
-// ── Props ────────────────────────────────────────────────────────────────────
+// ── Props ───────────────────────────────────────────────────────────────────
 interface Props {
   message: ChatMessage
   isThinking?: boolean
@@ -16,9 +16,12 @@ const props = withDefaults(defineProps<Props>(), {
 const isUser = computed(() => props.message.role === 'user')
 
 const formattedTime = computed(() => {
+  const ts = props.message.timestamp
+  if (!ts) return ''
+  const date = new Date(ts)
+  if (Number.isNaN(date.getTime())) return ''
   try {
-    const date = new Date(props.message.timestamp)
-    return date.toLocaleTimeString('zh-CN', {
+    return date.toLocaleTimeString('en-GB', {
       hour: '2-digit',
       minute: '2-digit',
     })
@@ -29,163 +32,156 @@ const formattedTime = computed(() => {
 </script>
 
 <template>
-  <div class="message-bubble" :class="{ 'message-bubble--user': isUser, 'message-bubble--assistant': !isUser }">
-    <div class="message-bubble__avatar">
-      {{ isUser ? '🧑' : '🤖' }}
+  <article class="message" :class="{ 'message--user': isUser, 'message--assistant': !isUser }">
+    <div v-if="!isUser" class="message__index eyebrow">
+      <span class="message__rule"></span>
+      <span>CONCIERGE</span>
     </div>
-    <div class="message-bubble__body">
-      <div class="message-bubble__content">
-        <template v-if="isThinking && !isUser">
-          <div class="message-bubble__typing">
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-          </div>
-        </template>
-        <template v-else>
-          {{ message.content }}
-        </template>
+    <div v-else class="message__index eyebrow message__index--user">
+      <span>YOU</span>
+      <span class="message__rule message__rule--user"></span>
+    </div>
+
+    <div class="message__body">
+      <div v-if="isThinking && !isUser" class="message__thinking">
+        <span class="thinking-dot"></span>
+        <span class="thinking-dot"></span>
+        <span class="thinking-dot"></span>
+        <span class="message__thinking-text serif italic">Composing your itinerary…</span>
       </div>
-      <div class="message-bubble__time">
-        {{ formattedTime }}
+      <p v-else class="message__content">{{ message.content }}</p>
+
+      <div class="message__meta">
+        <span class="message__time numeric">{{ formattedTime }}</span>
       </div>
     </div>
-  </div>
+  </article>
 </template>
 
 <style scoped>
-.message-bubble {
-  display: flex;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-lg);
-  max-width: 85%;
-  animation: bubble-fade-in 0.3s ease-out;
-}
-
-@keyframes bubble-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.message-bubble--user {
-  flex-direction: row-reverse;
-  margin-left: auto;
-}
-
-.message-bubble--assistant {
-  flex-direction: row;
-  margin-right: auto;
-}
-
-.message-bubble__avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-round);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  flex-shrink: 0;
-  background: var(--color-bg-muted);
-  box-shadow: var(--shadow-sm);
-}
-
-.message-bubble__body {
+.message {
   display: flex;
   flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-lg) 0;
+  animation: msg-fade-in var(--duration-slow) var(--ease-out-expo);
+}
+
+@keyframes msg-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message--user {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.message__index {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-text-muted);
+}
+
+.message__index--user {
+  color: var(--color-text-secondary);
+}
+
+.message__rule {
+  width: 18px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.message__rule--user {
+  opacity: 0.5;
+}
+
+.message__body {
+  max-width: 92%;
+}
+
+.message--user .message__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: var(--space-xs);
 }
 
-.message-bubble--user .message-bubble__body {
-  align-items: flex-end;
-}
-
-.message-bubble--assistant .message-bubble__body {
-  align-items: flex-start;
-}
-
-.message-bubble__content {
-  padding: 10px 14px;
-  border-radius: var(--radius-lg);
-  font-size: var(--font-size-base);
-  line-height: var(--line-height-normal);
-  word-break: break-word;
-  white-space: pre-wrap;
-}
-
-.message-bubble--user .message-bubble__content {
-  background: var(--color-primary);
-  color: #fff;
-  border-top-right-radius: var(--radius-sm);
-}
-
-.message-bubble--assistant .message-bubble__content {
-  background: var(--color-bg-muted);
+.message__content {
+  font-family: var(--font-serif);
+  font-size: var(--text-subtitle);
+  font-weight: 400;
+  line-height: var(--line-height-relaxed);
   color: var(--color-text-primary);
-  border-top-left-radius: var(--radius-sm);
+  letter-spacing: -0.005em;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.message-bubble__time {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  padding: 0 var(--space-xs);
+.message--user .message__content {
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: 400;
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-hairline);
+  letter-spacing: 0;
 }
 
-/* ── Typing Indicator ────────────────────────────────────────────────────── */
-.message-bubble__typing {
+.message__meta {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.message--user .message__meta {
+  justify-content: flex-end;
+}
+
+.message__time {
+  font-family: var(--font-sans);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+}
+
+.message__thinking {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-xs) 0;
+  gap: var(--space-sm);
+  padding: var(--space-md) 0;
 }
 
-.typing-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-round);
-  background: var(--color-text-secondary);
-  animation: typing-bounce 1.4s infinite ease-in-out both;
+.thinking-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-circle);
+  background: var(--color-accent);
+  animation: thinking-pulse 1.4s ease-in-out infinite both;
 }
 
-.typing-dot:nth-child(1) {
-  animation-delay: 0s;
+.thinking-dot:nth-child(1) { animation-delay: 0s; }
+.thinking-dot:nth-child(2) { animation-delay: 0.18s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes thinking-pulse {
+  0%, 80%, 100% { transform: scale(0.4); opacity: 0.3; }
+  40% { transform: scale(1); opacity: 1; }
 }
 
-.typing-dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.typing-dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes typing-bounce {
-  0%, 80%, 100% {
-    transform: scale(0.6);
-    opacity: 0.4;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-/* ── Responsive ───────────────────────────────────────────────────────────── */
-@media (max-width: 767px) {
-  .message-bubble {
-    max-width: 92%;
-  }
-
-  .message-bubble__avatar {
-    width: 30px;
-    height: 30px;
-    font-size: 15px;
-  }
+.message__thinking-text {
+  font-family: var(--font-serif);
+  font-size: var(--text-body);
+  font-style: italic;
+  color: var(--color-text-secondary);
+  margin-left: var(--space-sm);
 }
 </style>

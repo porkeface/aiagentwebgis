@@ -46,8 +46,8 @@ function onMarkerClick(): void {
       <div class="poi-popup">
         <p class="poi-popup-title">{{ poi.name }}</p>
         <span class="poi-popup-category">{{ poi.category }}</span>
-        <p class="poi-popup-rating">
-          ★ {{ poi.rating.toFixed(1) }}
+        <p class="poi-popup-rating" v-if="poi.rating != null">
+          ★ {{ Number(poi.rating).toFixed(1) }}
         </p>
       </div>
     </l-popup>

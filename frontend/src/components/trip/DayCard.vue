@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TripDayPOI, DayPlanDetail } from '@/types'
 import { DAY_COLORS } from '@/utils/constants'
+import { computed } from 'vue'
 
 // ── Props & Emits ──────────────────────────────────────────────────────────
 interface Props {
@@ -68,13 +69,30 @@ function haversineKm(a: TripDayPOI, b: TripDayPOI): number {
 }
 
 // ── Computed-like derived values ────────────────────────────────────────────
+const totalDistance = computed(() => calculateTotalDistance());
+const totalDuration = computed(() => estimateDuration(totalDistance.value));
+
 function getTotalDistance(): number {
-  return calculateTotalDistance();
+  return totalDistance.value;
 }
 
 function getTotalDuration(): number {
-  return estimateDuration(getTotalDistance());
+  return totalDuration.value;
 }
+
+// ── Pre-calculate distances between consecutive POIs ────────────────────────
+const poiDistances = computed(() => {
+  const pois = props.dayPlan.pois;
+  const distances: number[] = [];
+  for (let i = 0; i < pois.length - 1; i++) {
+    if (pois[i].lat != null && pois[i].lng != null && pois[i + 1].lat != null && pois[i + 1].lng != null) {
+      distances.push(haversineKm(pois[i], pois[i + 1]));
+    } else {
+      distances.push(0);
+    }
+  }
+  return distances;
+});
 
 function getPOIColor(index: number): string {
   return DAY_COLORS[index % DAY_COLORS.length]
@@ -121,7 +139,7 @@ function onPOIClick(poi: TripDayPOI): void {
             <span class="poi-time" v-if="poi.arrival_time || poi.departure_time">
               🕐 {{ formatTimeRange(poi.arrival_time, poi.departure_time) }}
             </span>
-            <span class="poi-rating" v-if="poi.rating != null">
+            <span class="poi-rating" v-if="typeof poi.rating === 'number'">
               ★ {{ poi.rating.toFixed(1) }}
             </span>
             <span class="poi-score" v-if="poi.score != null">
@@ -144,13 +162,13 @@ function onPOIClick(poi: TripDayPOI): void {
         <!-- Distance to next POI -->
         <div
           class="poi-distance"
-          v-if="index < dayPlan.pois.length - 1 && poi.lat != null && poi.lng != null && dayPlan.pois[index + 1].lat != null"
+          v-if="index < poiDistances.length && poi.lat != null && poi.lng != null && dayPlan.pois[index + 1].lat != null && dayPlan.pois[index + 1].lng != null"
         >
           <span class="distance-label">
-            {{ haversineKm(poi, dayPlan.pois[index + 1]).toFixed(1) }} km
+            {{ poiDistances[index].toFixed(1) }} km
           </span>
           <span class="distance-duration">
-            ~{{ estimateDuration(haversineKm(poi, dayPlan.pois[index + 1])) }} min
+            ~{{ estimateDuration(poiDistances[index]) }} min
           </span>
         </div>
       </div>
@@ -240,9 +258,6 @@ function onPOIClick(poi: TripDayPOI): void {
 
 .poi-item.clickable:hover {
   background-color: var(--color-bg-base);
-  margin: 0 calc(-1 * var(--space-xl));
-  padding-left: var(--space-xl);
-  padding-right: var(--space-xl);
   border-radius: var(--radius-md);
 }
 

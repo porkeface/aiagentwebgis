@@ -14,6 +14,10 @@ const mapStore = useMapStore();
 const route = useRoute();
 const router = useRouter();
 
+// Guard so a fast route change (back/forward within the same view) doesn't
+// race two in-flight fetches against each other.
+let inFlightId: number | null = null;
+
 // ── Load Trip ───────────────────────────────────────────────────────────────
 async function loadTrip(): Promise<void> {
   const tripId = Number(route.params.id);
@@ -23,18 +27,29 @@ async function loadTrip(): Promise<void> {
     return;
   }
 
+  // Drop any stale trip from a previous visit so the UI doesn't briefly
+  // show data that doesn't belong to this id.
+  tripStore.clearCurrentTrip();
+  mapStore.setPOIs([]);
+  mapStore.setRoutes([]);
+  mapStore.clearSelection();
+
+  inFlightId = tripId;
   try {
     await tripStore.fetchTrip(tripId);
-    if (tripStore.currentTrip) {
-      setupMapData();
-    } else {
+    // If the user navigated away mid-fetch, drop the stale result.
+    if (inFlightId !== tripId) return;
+    if (!tripStore.currentTrip) {
       ElMessage.error("行程不存在或已删除");
       router.push("/");
     }
   } catch (err: unknown) {
+    if (inFlightId !== tripId) return;
+    console.error('Failed to load trip:', err);
     const message = err instanceof Error ? err.message : "加载行程失败";
-    ElMessage.error(message);
-    router.push("/");
+    tripStore.setError(message);
+  } finally {
+    if (inFlightId === tripId) inFlightId = null;
   }
 }
 
@@ -145,6 +160,20 @@ watch(
   }
 );
 
+// ── Watch for route params changes (user clicked a different trip) ──────────
+watch(
+  () => route.params.id,
+  async (newId) => {
+    if (!newId) return;
+    const tripId = Number(newId);
+    if (isNaN(tripId)) return;
+    // Only refetch when the id actually changes — avoids duplicate calls on
+    // the initial onMounted + first watch firing.
+    if (tripStore.currentTrip?.id === tripId) return;
+    await loadTrip();
+  }
+);
+
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 onMounted(() => {
   loadTrip();
@@ -174,8 +203,15 @@ onMounted(() => {
       <p>加载行程中...</p>
     </div>
 
+    <!-- Error State -->
+    <div class="error-container" v-else-if="tripStore.error">
+      <div class="error-icon">⚠️</div>
+      <p>{{ tripStore.error }}</p>
+      <button class="retry-btn" @click="loadTrip">重试</button>
+    </div>
+
     <!-- Main Content -->
-    <main class="detail-content" v-if="tripStore.currentTrip && !tripStore.loading">
+    <main class="detail-content" v-else-if="tripStore.currentTrip && !tripStore.loading">
       <aside class="timeline-panel">
         <TripTimeline :trip="tripStore.currentTrip" @selectPOI="onPOISelect" />
       </aside>
@@ -184,13 +220,6 @@ onMounted(() => {
         <MapView />
       </section>
     </main>
-
-    <!-- Error State -->
-    <div class="error-container" v-if="tripStore.error">
-      <div class="error-icon">⚠️</div>
-      <p>{{ tripStore.error }}</p>
-      <button class="retry-btn" @click="loadTrip">重试</button>
-    </div>
   </div>
 </template>
 
