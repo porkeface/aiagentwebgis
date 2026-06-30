@@ -177,14 +177,16 @@ class TestGeocodeTool:
         assert result == (116.397428, 39.90923)
 
     async def test_geocode_tool_with_city(self, mock_amap: MagicMock) -> None:
-        """geocode_tool passes city to service when provided."""
+        """geocode_tool prepends city to address for disambiguation."""
         mock_amap.geocode.return_value = (121.473, 31.230)
         from agent.tools.geocoding import geocode_tool
 
         with patch("agent.tools.get_amap", return_value=mock_amap):
             result = await geocode_tool("黄浦区人民广场", city="上海")
 
-        mock_amap.geocode.assert_awaited_once_with("黄浦区人民广场")
+        # The tool joins city + address so the Amap API gets the most
+        # disambiguated query possible.
+        mock_amap.geocode.assert_awaited_once_with("上海黄浦区人民广场")
         assert result == (121.473, 31.230)
 
     async def test_reverse_geocode_tool(self, mock_amap: MagicMock) -> None:

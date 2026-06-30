@@ -227,7 +227,12 @@ class TongyiAdapter(BaseLLMAdapter):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[LLMChunk]:
-        """Stream chat response with retry logic.
+        """Stream chat response.
+
+        NOTE: M7 - Removed retry logic for streaming to avoid unsafe
+        partial content delivery. If streaming fails mid-stream, it will
+        raise an exception rather than retry and potentially deliver
+        duplicate or inconsistent content.
 
         Args:
             messages: Conversation messages
@@ -239,34 +244,16 @@ class TongyiAdapter(BaseLLMAdapter):
         client = self._get_client()
         lc_messages = self._convert_messages(messages)
 
-        last_error: Exception | None = None
+        try:
+            async for chunk in client.astream(lc_messages):
+                content = chunk.content if hasattr(chunk, "content") else str(chunk)
+                yield LLMChunk(content=content, is_done=False)
 
-        # Retry loop for timeout/connection errors
-        for attempt in range(MAX_RETRIES):
-            try:
-                async for chunk in client.astream(lc_messages):
-                    content = chunk.content if hasattr(chunk, "content") else str(chunk)
-                    yield LLMChunk(content=content, is_done=False)
-
-                yield LLMChunk(is_done=True)
-                return  # Success - exit retry loop
-
-            except (asyncio.TimeoutError, ConnectionError, TimeoutError) as e:
-                last_error = e
-                logger.warning(
-                    f"LLM stream failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}"
-                )
-                if attempt < MAX_RETRIES - 1:
-                    wait_time = RETRY_BACKOFF_BASE * (2 ** attempt)
-                    await asyncio.sleep(wait_time)
-                    continue
-
-        # All retries exhausted - yield error message
-        error_msg = "抱歉，AI 服务暂时不可用，请稍后重试。"
-        if last_error:
-            logger.error(f"LLM stream failed after {MAX_RETRIES} attempts: {last_error}")
-        yield LLMChunk(content=error_msg, is_done=False)
-        yield LLMChunk(is_done=True)
+            yield LLMChunk(is_done=True)
+        except (asyncio.TimeoutError, ConnectionError, TimeoutError) as e:
+            logger.error(f"LLM stream failed: {e}")
+            yield LLMChunk(content="抱歉，AI 服务暂时不可用，请稍后重试。", is_done=False)
+            yield LLMChunk(is_done=True)
 
     def _parse_response(self, response: Any) -> LLMResponse:
         """Parse a LangChain response into LLMResponse.

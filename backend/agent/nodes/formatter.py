@@ -62,6 +62,12 @@ class FormatterNode:
         - city and days present → plan_summary
         - always → text
 
+        Each emitted event is a flat dict with both:
+        - a top-level ``type`` discriminator (SSE event name)
+        - the event's payload as top-level fields (pois, city, days, content, …)
+        - a convenience ``data`` field containing the same payload, for
+          consumers that prefer to read via ``event["data"]``.
+
         Args:
             state: Current AgentState with planning results.
 
@@ -70,42 +76,100 @@ class FormatterNode:
         """
         events: list[dict[str, Any]] = []
 
-        # 1. POI result event
+        # 1. POI result event — send candidate POIs to map
         candidate_pois = state.get("candidate_pois", [])
         if candidate_pois:
             center = self._calc_center(candidate_pois)
-            events.append({
+            pois_payload = [
+                {
+                    "id": poi.get("id", 0),
+                    "name": poi.get("name", ""),
+                    "category": poi.get("category", ""),
+                    "address": poi.get("address"),
+                    "lng": poi.get("lng", 0.0),
+                    "lat": poi.get("lat", 0.0),
+                    "rating": poi.get("rating"),
+                    "review_count": poi.get("review_count"),
+                    "tags": poi.get("tags", []),
+                    "photo": poi.get("photo"),
+                    "description": poi.get("description"),
+                }
+                for poi in candidate_pois
+            ]
+            poi_event = {
                 "type": "poi_result",
-                "pois": candidate_pois,
+                "pois": pois_payload,
                 "center": center,
                 "zoom": _DEFAULT_ZOOM,
-            })
+            }
+            poi_event["data"] = {
+                "pois": pois_payload,
+                "center": center,
+                "zoom": _DEFAULT_ZOOM,
+            }
+            events.append(poi_event)
 
-        # 2. Route result event
+        # 2. Route result event — send daily plans with embedded route segments
         daily_plans = state.get("daily_plans", [])
+        route_polylines = state.get("route_polylines", [])
         if daily_plans:
-            events.append({
+            # Build a lookup: day_number → list of polyline segments
+            segments_by_day: dict[int, list[dict[str, Any]]] = {}
+            for pl in route_polylines:
+                day_num = pl.get("day", 1)
+                segments_by_day.setdefault(day_num, []).append({
+                    "from_poi_id": pl.get("from_poi_id"),
+                    "to_poi_id": pl.get("to_poi_id"),
+                    "distance_km": pl.get("distance_km", 0.0),
+                    "duration_min": pl.get("duration_min", 0),
+                })
+
+            formatted_daily_plans = []
+            for day_plan in daily_plans:
+                day_num = day_plan.get("day", 1)
+                formatted_day = {
+                    "day": day_num,
+                    "day_title": day_plan.get("day_title", ""),
+                    "pois": day_plan.get("pois", []),
+                    "total_distance_km": day_plan.get("total_distance_km", 0.0),
+                    "segments": segments_by_day.get(day_num, []),
+                }
+                formatted_daily_plans.append(formatted_day)
+
+            route_event = {
                 "type": "route_result",
-                "daily_plans": daily_plans,
-                "polylines": state.get("route_polylines", []),
-            })
+                "daily_plans": formatted_daily_plans,
+                "polylines": route_polylines,
+            }
+            route_event["data"] = {
+                "daily_plans": formatted_daily_plans,
+                "polylines": route_polylines,
+            }
+            events.append(route_event)
 
         # 3. Plan summary event
         city = state.get("city")
         days = state.get("days")
         if city and days:
-            events.append({
+            summary_event = {
                 "type": "plan_summary",
                 "city": city,
                 "days": days,
-            })
+            }
+            summary_event["data"] = {
+                "city": city,
+                "days": days,
+            }
+            events.append(summary_event)
 
         # 4. Text event (always emitted)
         response_text = state.get("response_text", "")
-        events.append({
+        text_event = {
             "type": "text",
             "content": response_text,
-        })
+        }
+        text_event["data"] = {"content": response_text}
+        events.append(text_event)
 
         # Return new state dict (immutable pattern)
         return {**state, "structured_plan": events}

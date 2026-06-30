@@ -49,4 +49,4 @@ class AgentState(TypedDict):
     # Scoring & output
     recommendation_weights: dict[str, Any] | None
     response_text: str
-    structured_plan: dict[str, Any] | None
+    structured_plan: list[dict[str, Any]] | None

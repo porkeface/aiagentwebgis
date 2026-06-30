@@ -221,7 +221,7 @@ class TestBuildGraph:
         """Trip planning input should route through planner."""
         from unittest.mock import AsyncMock, patch
 
-        from agent.graph import build_graph
+        from agent.graph import build_graph, reset_compiled_graph
         from agent.llm.base import LLMResponse
         from agent.state import AgentState
 
@@ -232,7 +232,10 @@ class TestBuildGraph:
         )
 
         with patch("agent.graph.get_llm_adapter", return_value=mock_adapter):
-            graph = build_graph()
+            # Drop any cached graph from a previous test, then build a fresh
+            # one without a checkpointer so we can ainvoke without thread_id.
+            reset_compiled_graph()
+            graph = build_graph(checkpointer=False)
 
             initial_state: AgentState = {
                 "messages": [{"role": "user", "content": "帮我规划杭州两日游"}],
@@ -266,10 +269,13 @@ class TestBuildGraph:
 
     async def test_graph_routes_general_to_formatter(self) -> None:
         """General/greeting input should route directly to formatter."""
-        from agent.graph import build_graph
+        from agent.graph import build_graph, reset_compiled_graph
         from agent.state import AgentState
 
-        graph = build_graph()
+        # Clear the cached graph (from a previous test) so we get a fresh,
+        # checkpointer-free build.
+        reset_compiled_graph()
+        graph = build_graph(checkpointer=False)
 
         initial_state: AgentState = {
             "messages": [{"role": "user", "content": "你好"}],

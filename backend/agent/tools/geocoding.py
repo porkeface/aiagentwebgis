@@ -21,7 +21,9 @@ async def geocode_tool(
     from agent.tools import get_amap
 
     amap = get_amap()
-    return await amap.geocode(address)
+    # Prepend city to address if provided, for better disambiguation
+    full_address = f"{city}{address}" if city else address
+    return await amap.geocode(full_address)
 
 
 async def reverse_geocode_tool(

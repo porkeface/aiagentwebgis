@@ -76,7 +76,7 @@ def _compute_scores(
 
     # Max review count for popularity normalization
     max_review = max(
-        (poi.get("review_count", 0) for poi in pois),
+        (poi.get("review_count") or 0 for poi in pois),
         default=1,
     )
     if max_review == 0:
@@ -113,14 +113,14 @@ def _compute_scores(
             distance_score = 0.5  # neutral when no city center given
 
         # rating_score — normalized to [0, 1]
-        rating = poi.get("rating", 0.0)
+        rating = poi.get("rating") or 0.0
         rating_score = min(rating / 5.0, 1.0) if rating else 0.0
 
         # time_score — placeholder
         time_score = 1.0
 
         # popularity_score — normalized by max review count
-        review_count = poi.get("review_count", 0)
+        review_count = poi.get("review_count") or 0
         popularity_score = review_count / max_review
 
         scores.append(
@@ -146,6 +146,7 @@ def score_pois_tool(
     preferences: list[str],
     city_center_lng: float | None = None,
     city_center_lat: float | None = None,
+    weights: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Score POIs using multi-factor weighted scoring.
 
@@ -154,12 +155,18 @@ def score_pois_tool(
         preferences: User preference tags (e.g. ['文化', '历史']).
         city_center_lng: Optional city center longitude for distance scoring.
         city_center_lat: Optional city center latitude for distance scoring.
+        weights: Optional weight overrides per factor. Falls back to
+            module-level WEIGHTS for any missing keys.
 
     Returns:
         Copy of POI list with added 'score' field (weighted sum in [0, 1]).
     """
     if not pois:
         return []
+
+    effective_weights = {**WEIGHTS}
+    if weights:
+        effective_weights.update(weights)
 
     per_factor = _compute_scores(
         pois=pois,
@@ -171,11 +178,11 @@ def score_pois_tool(
     result: list[dict[str, Any]] = []
     for poi, sc in zip(pois, per_factor):
         weighted = (
-            WEIGHTS["preference"] * sc["preference_score"]
-            + WEIGHTS["distance"] * sc["distance_score"]
-            + WEIGHTS["rating"] * sc["rating_score"]
-            + WEIGHTS["time"] * sc["time_score"]
-            + WEIGHTS["popularity"] * sc["popularity_score"]
+            effective_weights.get("preference", 0) * sc["preference_score"]
+            + effective_weights.get("distance", 0) * sc["distance_score"]
+            + effective_weights.get("rating", 0) * sc["rating_score"]
+            + effective_weights.get("time", 0) * sc["time_score"]
+            + effective_weights.get("popularity", 0) * sc["popularity_score"]
         )
         scored_poi = {**poi, "score": round(weighted, 4)}
         result.append(scored_poi)

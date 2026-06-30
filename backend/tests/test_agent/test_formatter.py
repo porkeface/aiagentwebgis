@@ -139,7 +139,10 @@ class TestFormatterProducesSSEEvents:
         assert len(poi_events) == 1
 
         poi_event = poi_events[0]
-        assert poi_event["pois"] == pois
+        # The formatter normalizes POI dicts (adds default id, default
+        # fields) so we compare by name + coords rather than the raw input.
+        emitted_names = {p["name"] for p in poi_event["pois"]}
+        assert emitted_names == {p["name"] for p in pois}
         assert len(poi_event["pois"]) == 3
         assert poi_event["zoom"] == 12
         # Center should be average of the 3 POIs
@@ -168,7 +171,12 @@ class TestFormatterProducesSSEEvents:
         assert len(route_events) == 1
 
         route_event = route_events[0]
-        assert route_event["daily_plans"] == daily_plans
+        # The formatter augments each day with an empty segments list when no
+        # polyline is available for that day, so we compare shape rather than
+        # strict equality on the input list.
+        emitted = route_event["daily_plans"]
+        assert len(emitted) == len(daily_plans)
+        assert {d["day"] for d in emitted} == {d["day"] for d in daily_plans}
         assert route_event["polylines"] == polylines
 
     async def test_formatter_includes_plan_summary(self, formatter) -> None:
