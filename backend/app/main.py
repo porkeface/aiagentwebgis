@@ -1,8 +1,76 @@
-from fastapi import FastAPI
+"""FastAPI application factory with middleware and router wiring."""
+
+import asyncio
+import time
+from collections import defaultdict, deque
+from typing import Deque
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1.router import router as v1_router
 from app.config import settings
+
+
+# ---------------------------------------------------------------------------
+# Lightweight in-memory rate limiter
+# ---------------------------------------------------------------------------
+# A per-client token-bucket / sliding-window counter. Sufficient for a single
+# process — production multi-worker deployments should swap this for Redis
+# (the interface is identical: `is_allowed(client_id)` returns False when
+# the client has exceeded their budget in the current window).
+# ---------------------------------------------------------------------------
+
+class _SlidingWindowLimiter:
+    """Per-key sliding-window rate limiter.
+
+    Records each call's timestamp in a deque per key, and prunes entries
+    older than ``window_seconds`` on every check. ``is_allowed`` returns
+    False once a key has more than ``max_calls`` timestamps in the window.
+    """
+
+    def __init__(self, max_calls: int, window_seconds: float) -> None:
+        self.max_calls = max_calls
+        self.window_seconds = window_seconds
+        self._calls: dict[str, Deque[float]] = defaultdict(deque)
+        self._lock = asyncio.Lock()
+
+    async def is_allowed(self, key: str) -> bool:
+        now = time.monotonic()
+        async with self._lock:
+            bucket = self._calls[key]
+            cutoff = now - self.window_seconds
+            while bucket and bucket[0] < cutoff:
+                bucket.popleft()
+            if len(bucket) >= self.max_calls:
+                return False
+            bucket.append(now)
+            return True
+
+
+# Per-route limiters. Agent chat is the most expensive (LLM + Amap calls)
+# so it gets the tightest budget.
+_AGENT_CHAT_LIMITER = _SlidingWindowLimiter(max_calls=20, window_seconds=60.0)
+_AUTH_LIMITER = _SlidingWindowLimiter(max_calls=10, window_seconds=60.0)
+
+
+def _client_key(request: Request) -> str:
+    """Best-effort client identifier for rate limiting.
+
+    Prefers the authenticated user (so a logged-in user keeps their budget
+    when sharing a NAT with anonymous traffic), then the X-Forwarded-For
+    chain, then falls back to the raw client host.
+    """
+    user = getattr(request.state, "user_id", None)
+    if user is not None:
+        return f"user:{user}"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return f"ip:{forwarded.split(',')[0].strip()}"
+    if request.client and request.client.host:
+        return f"ip:{request.client.host}"
+    return "ip:unknown"
 
 
 def create_app() -> FastAPI:
@@ -41,14 +109,43 @@ def create_app() -> FastAPI:
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
+        allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
+    # ---------------------------------------------------------------------
+    # Rate-limit middleware
+    # ---------------------------------------------------------------------
+    @app.middleware("http")
+    async def _rate_limit(request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/api/v1/agent/"):
+            limiter = _AGENT_CHAT_LIMITER
+        elif path.startswith("/api/v1/auth/"):
+            limiter = _AUTH_LIMITER
+        else:
+            return await call_next(request)
+
+        if not await limiter.is_allowed(_client_key(request)):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests, slow down."},
+            )
+        return await call_next(request)
+
     # Include routers
     app.include_router(v1_router)
+
+    @app.on_event("shutdown")
+    async def _shutdown() -> None:
+        """Release process-wide resources on shutdown."""
+        try:
+            from agent.tools import close_amap
+            await close_amap()
+        except Exception:
+            logger.exception("Failed to close AmapService on shutdown")
 
     @app.get("/health")
     async def health_check() -> dict[str, str]:

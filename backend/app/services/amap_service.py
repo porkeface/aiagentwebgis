@@ -2,8 +2,6 @@
 
 Base URL: https://restapi.amap.com/v3
 Docs: https://lbs.amap.com/api/webservice/summary
-
-Includes retry logic and fallback to local database when API fails.
 """
 
 from __future__ import annotations
@@ -23,6 +21,62 @@ VALID_ROUTE_MODES = frozenset({"walking", "driving", "bicycling", "transit"})
 # Retry configuration for Amap API
 AMAP_MAX_RETRIES = 2
 AMAP_RETRY_BACKOFF_BASE = 0.5  # seconds
+
+
+def _first_photo(poi: dict[str, Any]) -> str | None:
+    """Extract the first photo URL from a POI dict, or None."""
+    photos = poi.get("photos")
+    if isinstance(photos, list) and photos:
+        first = photos[0]
+        if isinstance(first, dict):
+            url = first.get("url")
+            if isinstance(url, str):
+                return url
+    return None
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Safely convert a value to float, returning default on failure."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _extract_rating(poi: dict[str, Any]) -> float | None:
+    """Extract rating from biz_ext or deep_info."""
+    biz_ext = poi.get("biz_ext")
+    if isinstance(biz_ext, dict):
+        rating = biz_ext.get("rating")
+        if rating is not None:
+            try:
+                return float(rating)
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def _extract_review_count(poi: dict[str, Any]) -> int | None:
+    """Extract review count from deep_info."""
+    deep_info = poi.get("deep_info")
+    if isinstance(deep_info, dict):
+        count = deep_info.get("review_count")
+        if count is not None:
+            try:
+                return int(count)
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def _extract_description(poi: dict[str, Any]) -> str | None:
+    """Extract intro/description from deep_info."""
+    deep_info = poi.get("deep_info")
+    if isinstance(deep_info, dict):
+        intro = deep_info.get("intro")
+        if isinstance(intro, str) and intro.strip():
+            return intro.strip()
+    return None
 
 
 class AmapService:
@@ -45,11 +99,19 @@ class AmapService:
         return False
 
     def _get_client(self) -> httpx.AsyncClient:
-        """Lazily create and return the shared httpx.AsyncClient."""
+        """Lazily create and return the shared httpx.AsyncClient.
+
+        A bounded connection pool is used to prevent bursting past Amap's QPS
+        limit when many parallel planner requests fire route searches.
+        """
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 base_url=AMAP_BASE_URL,
                 timeout=10.0,
+                limits=httpx.Limits(
+                    max_connections=10,
+                    max_keepalive_connections=5,
+                ),
             )
         return self._client
 
@@ -107,7 +169,9 @@ class AmapService:
                     continue
 
         # All retries exhausted
-        raise last_error  # type: ignore[misc]
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Amap API request failed after all retries")
 
     async def search_pois(
         self,
@@ -127,7 +191,11 @@ class AmapService:
         Returns:
             List of POI dicts with keys: amap_id, name, address, lng, lat, type, city.
         """
-        params: dict[str, str] = {"city": city, "offset": str(limit)}
+        params: dict[str, str] = {
+            "city": city,
+            "offset": str(limit),
+            "extensions": "all",
+        }
         if keyword:
             params["keywords"] = keyword
         if category:
@@ -156,13 +224,18 @@ class AmapService:
 
             results.append(
                 {
+                    "id": poi.get("id", ""),
                     "amap_id": poi.get("id", ""),
                     "name": poi.get("name", ""),
                     "address": poi.get("address", ""),
                     "lng": lng,
                     "lat": lat,
-                    "type": poi.get("type", ""),
+                    "category": poi.get("type", ""),
                     "city": city_name,
+                    "photo": _first_photo(poi),
+                    "rating": _extract_rating(poi),
+                    "review_count": _extract_review_count(poi),
+                    "description": _extract_description(poi),
                 }
             )
 
@@ -191,6 +264,7 @@ class AmapService:
             "types": category,
             "radius": str(radius),
             "offset": "20",
+            "extensions": "all",
         }
 
         data = await self._request("place/around", params)
@@ -209,12 +283,16 @@ class AmapService:
 
             results.append(
                 {
-                    "amap_id": poi.get("id", ""),
+                    "id": poi.get("id", ""),
                     "name": poi.get("name", ""),
                     "address": poi.get("address", ""),
                     "lng": poi_lng,
                     "lat": poi_lat,
-                    "type": poi.get("type", ""),
+                    "category": poi.get("type", ""),
+                    "photo": _first_photo(poi),
+                    "rating": _extract_rating(poi),
+                    "review_count": _extract_review_count(poi),
+                    "description": _extract_description(poi),
                 }
             )
 
@@ -319,8 +397,8 @@ class AmapService:
             }
 
         path = paths[0]
-        distance_m = float(path.get("distance", 0))
-        duration_s = float(path.get("duration", 0))
+        distance_m = _safe_float(path.get("distance", 0))
+        duration_s = _safe_float(path.get("duration", 0))
 
         # Concatenate polylines from all steps
         steps = path.get("steps", [])

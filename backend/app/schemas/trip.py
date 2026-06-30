@@ -10,6 +10,7 @@ class TripCreate(BaseModel):
 
     city: str
     days: int = Field(ge=1, le=30)
+    title: str | None = None
     preferences: list[str] = Field(default_factory=list)
     companion_types: list[str] = Field(default_factory=list)
 
@@ -65,3 +66,44 @@ class TripDetailResponse(BaseModel):
     daily_plans: list[DayPlanDetail] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+
+# ── Plan-save schemas (AI plan → persisted Trip) ─────────────────────────
+#
+# These are used by POST /api/v1/trips/save-plan which takes the AI planner
+# output (daily_plans + route data) and materialises it as a Trip with
+# TripDay + TripDayPOI rows.
+
+class SavePlanPOI(BaseModel):
+    """A POI stop inside an AI-generated daily plan."""
+
+    id: int | str = Field(description="POI database id (int) or Amap id (str)")
+    name: str = ""
+    category: str = ""
+    lng: float = 0.0
+    lat: float = 0.0
+    rating: float | None = None
+    address: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    photo: str | None = None
+    description: str | None = None
+
+
+class SavePlanDay(BaseModel):
+    """A single day inside a save-plan request."""
+
+    day: int = Field(ge=1, le=30)
+    day_title: str | None = None
+    pois: list[SavePlanPOI] = Field(default_factory=list)
+    total_distance_km: float = 0.0
+    total_duration_min: float | None = None
+
+
+class SavePlanRequest(BaseModel):
+    """POST /api/v1/trips/save-plan body."""
+
+    city: str
+    days: int = Field(ge=1, le=30)
+    title: str | None = None
+    daily_plans: list[SavePlanDay] = Field(default_factory=list)
+

@@ -7,17 +7,56 @@ Includes comprehensive error handling with friendly error messages.
 import json
 import logging
 import uuid
-from typing import Any, AsyncGenerator
+import asyncio
+from typing import Any, AsyncGenerator, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent.graph import build_graph
+from app.database import get_session
+from app.models.user import User
 from app.schemas.agent import ChatRequest
+from app.services.auth_service import decode_token
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/agent", tags=["Agent"])
+
+# Optional auth - allows anonymous access for now
+# TODO: H2 - Add rate limiting middleware to prevent abuse
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+
+async def get_optional_user(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: AsyncSession = Depends(get_session),
+) -> Optional[int]:
+    """Extract user from token if present, allow anonymous if not.
+
+    Returns:
+        User ID if authenticated, None if anonymous.
+    """
+    if not token:
+        return None
+    try:
+        user_id = decode_token(token)
+        if user_id is None:
+            return None
+        # Verify user exists
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            return None
+        return user_id
+    except (JWTError, ValueError, TypeError, SQLAlchemyError) as e:
+        logger.warning("Optional auth token decode failed: %s", e)
+        return None
 
 
 def _format_sse_event(event_type: str, data: dict[str, Any]) -> str:
@@ -68,24 +107,48 @@ async def _event_generator(
         SSE-formatted event strings.
     """
     try:
-        # Build graph and invoke with initial state
+        # Build graph and invoke with initial state.
+        # NOTE: AgentState has 15+ fields. Initial state must populate ALL of
+        # them so LangGraph's input merge doesn't leave undefined keys; nodes
+        # read via state.get(...) which is safe either way, but missing keys
+        # would break any future input_schema validation and the checkpointer
+        # replay path.
         graph = build_graph()
         initial_state = {
             "messages": [{"role": "user", "content": message}],
             "session_id": session_id,
+            "intent": "",
+            "city": None,
+            "days": None,
+            "preferences": [],
+            "companion_types": [],
+            "budget_level": None,
+            "candidate_pois": [],
+            "selected_pois": [],
+            "daily_plans": [],
+            "route_polylines": [],
+            "recommendation_weights": None,
+            "response_text": "",
+            "structured_plan": None,
         }
         config = {"configurable": {"thread_id": session_id}}
 
-        result = await graph.ainvoke(initial_state, config=config)
+        result = await asyncio.wait_for(
+            graph.ainvoke(initial_state, config=config),
+            timeout=120.0,
+        )
 
-        # Stream events from structured_plan
+        # Stream events from structured_plan.
+        # Each event is an envelope on the wire: { type, data: {...payload} }.
+        # The frontend SSE parser expects this shape (see frontend/src/api/agent.ts
+        # parseSSEEvent). We pull `event.data` when present (the formatter emits
+        # both flat and wrapped forms) and re-emit as a single envelope.
         structured_plan: list[dict[str, Any]] = result.get("structured_plan", [])
 
         for event in structured_plan:
-            event_type = event.get("type", "text")
-            # Wrap event data in standard envelope
-            event_data = {"type": event_type, "data": event}
-            yield _format_sse_event("message", event_data)
+            event_type = event.get("type", "message")
+            payload = event.get("data", event)
+            yield _format_sse_event("message", {"type": event_type, "data": payload})
 
     except TimeoutError:
         logger.error(f"Agent timeout for session_id={session_id}")
@@ -106,11 +169,15 @@ async def _event_generator(
     summary="Chat with AI travel agent",
     description="Send a message to the AI agent and receive SSE-streamed events (thinking, tool_calling, poi_result, route_result, plan_summary, text, error, done).",
 )
-async def chat(request: ChatRequest) -> StreamingResponse:
+async def chat(
+    request: ChatRequest,
+    user_id: Optional[int] = Depends(get_optional_user),
+) -> StreamingResponse:
     """Agent chat endpoint with SSE streaming.
 
     Args:
         request: ChatRequest with session_id (optional) and message.
+        user_id: Optional authenticated user ID (None for anonymous).
 
     Returns:
         StreamingResponse with text/event-stream content type.

@@ -1,12 +1,16 @@
 """POI model with PostGIS geometry and shared Base class."""
 
+import logging
 from datetime import datetime
 
 from geoalchemy2 import Geometry
 from geoalchemy2.shape import to_shape
-from sqlalchemy import ARRAY, DateTime, Float, Integer, String, Text, func
+from sqlalchemy import ARRAY, DateTime, Float, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -36,6 +40,32 @@ class POI(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    __table_args__ = (
+        # GIST index on the PostGIS geometry column — without it, ST_Within /
+        # ST_DWithin queries in search_pois fall back to a sequential scan.
+        Index(
+            "ix_pois_location_gist",
+            "location",
+            postgresql_using="gist",
+        ),
+        # Common filter combo: by city + category, ordered by rating.
+        Index("ix_pois_city_category_rating", "city", "category", "rating"),
+        # Partial unique index on the amap id inside the JSONB extra_data
+        # column. Prevents two POIs from claiming the same Amap record even
+        # under concurrent save_plan.
+        Index(
+            "uq_pois_extra_amap_id",
+            "extra_data",
+            postgresql_using="btree",
+            postgresql_where=func.coalesce(
+                func.jsonb_extract_path_text("extra_data", "amap_id"),
+                "",
+            )
+            != "",
+            unique=True,
+        ),
+    )
+
     def to_dict(self) -> dict:
         """Convert POI to dictionary."""
         result = {
@@ -52,7 +82,14 @@ class POI(Base):
             "extra_data": self.extra_data,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+        # Extract photo from extra_data if present
+        if self.extra_data and isinstance(self.extra_data, dict):
+            result["photo"] = self.extra_data.get("photo")
         if self.location:
-            point = to_shape(self.location)
-            result["location"] = {"lng": point.x, "lat": point.y}
+            try:
+                point = to_shape(self.location)
+                result["location"] = {"lng": point.x, "lat": point.y}
+            except Exception:
+                logger.warning("Failed to parse geometry for POI id=%s", self.id)
+                result["location"] = {"lng": None, "lat": None}
         return result

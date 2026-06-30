@@ -28,7 +28,7 @@ def _poi_to_response(poi: POI) -> POIResponse:
         id=poi.id,
         name=poi.name,
         category=poi.category,
-        address=None,
+        address=poi.extra_data.get("address") if isinstance(poi.extra_data, dict) and poi.extra_data.get("address") else None,
         lng=lng,
         lat=lat,
         rating=poi.rating,
@@ -71,9 +71,12 @@ async def search_pois(
 
     # Keyword filter (search name and description)
     if keyword is not None:
-        pattern = f"%{keyword}%"
+        # Escape LIKE special characters
+        escaped_keyword = keyword.replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped_keyword}%"
         stmt = stmt.where(
-            POI.name.ilike(pattern) | POI.description.ilike(pattern)
+            POI.name.ilike(pattern, escape="\\")
+            | POI.description.ilike(pattern, escape="\\")
         )
 
     # Bounding box spatial filter

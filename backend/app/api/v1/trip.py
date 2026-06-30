@@ -1,14 +1,23 @@
 """Trip CRUD API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from geoalchemy2.shape import to_shape
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import get_current_user
 from app.database import get_session
-from app.schemas.trip import TripCreate, TripDetailResponse, TripResponse
+from app.schemas.trip import (
+    SavePlanRequest,
+    TripCreate,
+    TripDetailResponse,
+    TripResponse,
+)
 from app.services import trip_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/trips", tags=["Trip"])
 
@@ -56,14 +65,56 @@ async def create_trip_endpoint(
     }
 
 
+@router.post(
+    "/save-plan",
+    summary="Persist an AI planner output as a Trip",
+    description=(
+        "Takes the AI planner's daily_plans (city, days, stops per day) and "
+        "materialises them as a Trip with TripDay + TripDayPOI rows. The user "
+        "can later reload the plan via GET /trips/:id."
+    ),
+    status_code=status.HTTP_201_CREATED,
+)
+async def save_plan_endpoint(
+    plan: SavePlanRequest,
+    db: AsyncSession = Depends(get_session),
+    user_id: int = Depends(get_current_user),
+) -> dict:
+    """Persist a full AI plan as a Trip.
+
+    Returns the created trip's summary (id, city, days, status, created_at).
+    Missing POI ids are logged and skipped rather than failing the whole request.
+    """
+    try:
+        trip = await trip_service.save_plan(db=db, user_id=user_id, plan=plan)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.exception("save_plan failed: %s", exc)
+        raise HTTPException(
+            status_code=500, detail="Failed to save trip plan",
+        ) from exc
+
+    return {
+        "success": True,
+        "data": {
+            "id": trip.id,
+            "city": trip.city,
+            "days": (trip.end_date - trip.start_date).days + 1,
+            "status": trip.status,
+            "created_at": trip.created_at.isoformat(),
+        },
+    }
+
+
 @router.get(
     "",
     summary="List user trips",
     description="List trips for the authenticated user with pagination, ordered by creation date.",
 )
 async def list_trips_endpoint(
-    page: int = 1,
-    size: int = 20,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_session),
     user_id: int = Depends(get_current_user),
 ) -> dict:
@@ -80,6 +131,7 @@ async def list_trips_endpoint(
     items = [
         {
             "id": t.id,
+            "title": t.title,
             "city": t.city,
             "days": (t.end_date - t.start_date).days + 1,
             "status": t.status,
@@ -124,9 +176,14 @@ async def get_trip_endpoint(
         for p in day.pois:
             poi_obj = p.poi
             if poi_obj and poi_obj.location:
-                point = to_shape(poi_obj.location)
-                lng = point.x
-                lat = point.y
+                try:
+                    point = to_shape(poi_obj.location)
+                    lng = point.x
+                    lat = point.y
+                except Exception:
+                    logger.warning("Failed to parse geometry for POI id=%s", poi_obj.id)
+                    lng = None
+                    lat = None
             else:
                 lng = None
                 lat = None
@@ -142,8 +199,8 @@ async def get_trip_endpoint(
                 "lng": lng,
                 "lat": lat,
                 "rating": poi_obj.rating if poi_obj else None,
-                "address": poi_obj.address if poi_obj else None,
-                "tags": poi_obj.tags if poi_obj else [],
+                "address": (poi_obj.extra_data or {}).get("address") if poi_obj else None,
+                "tags": (poi_obj.tags or []) if poi_obj else [],
             })
         daily_plans.append({
             "day_number": day.day_number,

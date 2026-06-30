@@ -17,6 +17,16 @@ class RegisterRequest(BaseModel):
             raise ValueError("Invalid email format")
         return v.lower()
 
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, v: str) -> str:
+        # Strip whitespace and lowercase so "Alice"/"alice " don't create
+        # duplicate accounts on a case-sensitive collation.
+        cleaned = v.strip().lower()
+        if len(cleaned) < 3:
+            raise ValueError("Username must be at least 3 characters after trimming")
+        return cleaned
+
 
 class LoginRequest(BaseModel):
     """Request schema for user login."""
@@ -24,9 +34,20 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, v: str) -> str:
+        return v.strip().lower()
+
 
 class TokenResponse(BaseModel):
     """Response schema for JWT token."""
 
     access_token: str
     token_type: str = "bearer"
+
+
+class LogoutResponse(BaseModel):
+    """Response schema for token revocation."""
+
+    revoked: bool
