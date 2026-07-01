@@ -98,36 +98,32 @@ def _validate_plan(plan_data: dict[str, Any]) -> list[str]:
         if not meal_types:
             errors.append(f"第{day_num}天: 缺少餐饮安排，每天至少需要 1 个 lunch 或 dinner POI")
 
-        # Validate geographic spread — prevent cross-district leaping
-        # (only when submit_plan is called after POI resolution, i.e. the
-        # API layer has enriched poi entries with lng/lat)
-        for day_plan in daily_plans:
-            day_pois = day_plan.get("pois", [])
-            coords: list[tuple[float, float]] = []
-            for p in day_pois:
-                lng = p.get("lng")
-                lat = p.get("lat")
-                if isinstance(lng, (int, float)) and isinstance(lat, (int, float)):
-                    coords.append((float(lng), float(lat)))
-            if len(coords) >= 2:
-                max_d = 0.0
-                max_pair: tuple[str, str] = ("?", "?")
-                for i in range(len(coords)):
-                    for j in range(i + 1, len(coords)):
-                        d = _haversine_km(
-                            coords[i][0], coords[i][1],
-                            coords[j][0], coords[j][1],
-                        )
-                        if d > max_d:
-                            max_d = d
-                            max_pair = (day_pois[i].get("poi_id", "?"), day_pois[j].get("poi_id", "?"))
-                if max_d > _MAX_SAME_DAY_SPREAD_KM:
-                    errors.append(
-                        f"第{day_plan.get('day','?')}天: POI 跨度过大 "
-                        f"({max_pair[0]} 距 {max_pair[1]} 约 {max_d:.0f}km，"
-                        f"上限 {_MAX_SAME_DAY_SPREAD_KM:.0f}km)，"
-                        f"请将跨区 POI 分配到不同天"
+        # Validate geographic spread for this day's POIs
+        coords: list[tuple[float, float]] = []
+        for p in pois:
+            lng = p.get("lng")
+            lat = p.get("lat")
+            if isinstance(lng, (int, float)) and isinstance(lat, (int, float)):
+                coords.append((float(lng), float(lat)))
+        if len(coords) >= 2:
+            max_d = 0.0
+            max_pair: tuple[str, str] = ("?", "?")
+            for i in range(len(coords)):
+                for j in range(i + 1, len(coords)):
+                    d = _haversine_km(
+                        coords[i][0], coords[i][1],
+                        coords[j][0], coords[j][1],
                     )
+                    if d > max_d:
+                        max_d = d
+                        max_pair = (pois[i].get("poi_id", "?"), pois[j].get("poi_id", "?"))
+            if max_d > _MAX_SAME_DAY_SPREAD_KM:
+                errors.append(
+                    f"第{day_num}天: POI 跨度过大 "
+                    f"({max_pair[0]} 距 {max_pair[1]} 约 {max_d:.0f}km，"
+                    f"上限 {_MAX_SAME_DAY_SPREAD_KM:.0f}km)，"
+                    f"请将跨区 POI 分配到不同天"
+                )
 
         # Validate time_slots
         valid_slots = {"morning", "noon", "afternoon", "evening"}

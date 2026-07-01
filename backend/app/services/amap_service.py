@@ -429,16 +429,16 @@ class AmapService:
         waypoints: list[tuple[float, float]] | None = None,
         mode: str = "driving",
     ) -> dict[str, Any]:
-        """Plan a multi-waypoint driving route via Amap v5 direction API.
+        """Plan a multi-waypoint driving route via Amap direction API.
 
-        Uses the newer /v5/direction/driving endpoint which supports up to
-        16 waypoints.  Waypoints are visited in the submitted order.
+        Uses Amap's v3 direction/driving endpoint with waypoints support
+        (up to 16 waypoints).  Waypoints are visited in the submitted order.
 
         Args:
             origin: (lng, lat) of the first stop.
             destination: (lng, lat) of the last stop.
             waypoints: Optional list of (lng, lat) for intermediate stops.
-            mode: Only "driving" supports waypoints in v5.
+            mode: Only "driving" supports waypoints.
 
         Returns:
             Dict with:
@@ -459,10 +459,8 @@ class AmapService:
         }
 
         if mode == "driving" and waypoints:
-            # Build waypoints string: lng1,lat1;lng2,lat2
             wp_str = ";".join(f"{w[0]},{w[1]}" for w in waypoints)
             params["waypoints"] = wp_str
-            # Strategy: 0=fastest, 2=least distance
             params["strategy"] = "0"
             params["extensions"] = "all"
 
@@ -482,29 +480,18 @@ class AmapService:
         distance_m = _safe_float(path.get("distance", 0))
         duration_s = _safe_float(path.get("duration", 0))
 
-        # Build per-leg segments from steps
+        # Build per-leg segments from Amap step data
         steps = path.get("steps", [])
         segments: list[dict[str, Any]] = []
         polyline_parts: list[str] = []
 
-        for i, step in enumerate(steps):
+        for step in steps:
             seg_distance = _safe_float(step.get("distance", 0)) / 1000.0
             seg_duration = _safe_float(step.get("duration", 0)) / 60.0
             step_polyline = step.get("polyline", "")
             if step_polyline:
                 polyline_parts.append(step_polyline)
-
-            # Map step to nearest known POI
-            from_name = "?"
-            to_name = "?"
-            if i < len(all_coords):
-                from_name = f"stop_{i + 1}"
-            if i + 1 < len(all_coords):
-                to_name = f"stop_{i + 2}"
-
             segments.append({
-                "from": from_name,
-                "to": to_name,
                 "distance_km": round(seg_distance, 2),
                 "duration_min": round(seg_duration, 2),
             })
