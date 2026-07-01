@@ -27,7 +27,10 @@ const visibleTags = computed(() => {
   const raw = props.poi.tags ?? []
   return [...new Set(raw)].filter(Boolean).slice(0, 4)
 })
-const hasAddress = computed(() => !!props.poi.address && props.poi.address.trim().length > 0)
+const hasAddress = computed(() => {
+  const addr = props.poi.address
+  return typeof addr === 'string' && addr.trim().length > 0
+})
 const photoFailed = ref(false)
 watch(() => props.poi?.id, () => { photoFailed.value = false })
 const hasPhoto = computed(() => !!props.poi.photo && !photoFailed.value)

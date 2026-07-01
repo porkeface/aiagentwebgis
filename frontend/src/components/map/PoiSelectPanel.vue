@@ -45,9 +45,10 @@ function startPlanning(): void {
     return
   }
 
-  const names = selectedPois.map((p) => `- ${p.name} (id: ${p.id})`).join('\n')
-  const count = selectedPois.length
-  const message = `请用以下 ${count} 个 POI 规划行程（请根据 POI 数量和分布自行判断适合的天数）：\n${names}`
+  const items = selectedPois
+    .map((p) => `- ${p.name} | id:${p.id} | lng:${p.lng} | lat:${p.lat}`)
+    .join('\n')
+  const message = `请直接用以下 ${count} 个 POI 规划行程。每个 POI 已有完整坐标，禁止调用 search_pois 重新搜索。根据 POI 数量和地理分布自行判断适合的天数：\n${items}`
 
   emit('close')
   chatStore.sendMessage(message)
