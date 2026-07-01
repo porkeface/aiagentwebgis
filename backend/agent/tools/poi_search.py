@@ -33,8 +33,8 @@ async def search_pois(
     try:
         return await amap.search_pois(city=city, category=category, keyword=keyword or None)
     except Exception as e:
-        logger.warning(f"search_pois failed for {city}/{category}: {e}")
-        return []
+        logger.error("search_pois failed for %s/%s: %s", city, category, e)
+        return [{"error": str(e), "city": city, "category": category}]
 
 
 @tool
@@ -60,5 +60,5 @@ async def search_nearby(
     try:
         return await amap.search_nearby(lng=lng, lat=lat, category=category, radius=radius)
     except Exception as e:
-        logger.warning(f"search_nearby failed for ({lng},{lat}): {e}")
-        return []
+        logger.error("search_nearby failed for (%s,%s): %s", lng, lat, e)
+        return [{"error": str(e), "lng": lng, "lat": lat, "category": category}]

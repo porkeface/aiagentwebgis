@@ -398,6 +398,33 @@ function onTripsClick(): void {
   box-shadow: var(--shadow-md);
 }
 
+/* Dark/light mode toggle — top-right */
+.map-dark-toggle {
+  position: absolute;
+  top: var(--space-xl);
+  right: var(--space-xl);
+  z-index: 1150;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 24, 31, 0.78);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-circle);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out-expo);
+  box-shadow: var(--shadow-md);
+}
+
+.map-dark-toggle:hover {
+  color: var(--color-text-primary);
+  background: rgba(243, 236, 225, 0.08);
+}
+
 .map-navbar__btn {
   position: relative;
   display: inline-flex;

@@ -116,24 +116,50 @@ def create_app() -> FastAPI:
     )
 
     # ---------------------------------------------------------------------
-    # Rate-limit middleware
+    # Rate-limit middleware (pure ASGI — does NOT buffer streaming responses)
     # ---------------------------------------------------------------------
-    @app.middleware("http")
-    async def _rate_limit(request: Request, call_next):
-        path = request.url.path
-        if path.startswith("/api/v1/agent/"):
-            limiter = _AGENT_CHAT_LIMITER
-        elif path.startswith("/api/v1/auth/"):
-            limiter = _AUTH_LIMITER
-        else:
-            return await call_next(request)
+    # Starlette's BaseHTTPMiddleware wraps the response body, which breaks SSE
+    # streaming by buffering the entire body.  We use a raw ASGI middleware to
+    # rate-limit without touching the stream payload.
+    from starlette.types import ASGIApp, Receive, Scope, Send, Message
 
-        if not await limiter.is_allowed(_client_key(request)):
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Too many requests, slow down."},
-            )
-        return await call_next(request)
+    class RateLimitMiddleware:
+        """Per-path sliding-window rate limiter as a raw ASGI middleware.
+
+        This intentionally does NOT use ``BaseHTTPMiddleware``, which buffers
+        the response body and breaks SSE streaming.
+        """
+
+        def __init__(self, app: ASGIApp) -> None:
+            self._app = app
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            if scope["type"] != "http":
+                await self._app(scope, receive, send)
+                return
+
+            path = scope["path"]
+            if path.startswith("/api/v1/agent/"):
+                limiter = _AGENT_CHAT_LIMITER
+            elif path.startswith("/api/v1/auth/"):
+                limiter = _AUTH_LIMITER
+            else:
+                await self._app(scope, receive, send)
+                return
+
+            # Build a request to resolve the client key
+            request = Request(scope, receive)
+            if not await limiter.is_allowed(_client_key(request)):
+                response = JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too many requests, slow down."},
+                )
+                await response(scope, receive, send)
+                return
+
+            await self._app(scope, receive, send)
+
+    app.add_middleware(RateLimitMiddleware)
 
     # Include routers
     app.include_router(v1_router)

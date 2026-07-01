@@ -344,6 +344,12 @@ function handleNewSession(): void {
       </div>
     </div>
 
+    <!-- ── Tool Status Bar ─────────────────────────────────────────────── -->
+    <div v-if="chatStore.toolStatus" class="chat-panel__status">
+      <span class="status-indicator" />
+      <span>{{ chatStore.toolStatus }}</span>
+    </div>
+
     <!-- ── Input Area ─────────────────────────────────────────────────── -->
     <div class="chat-panel__input">
       <div class="chat-panel__input-field">
@@ -1008,6 +1014,30 @@ function handleNewSession(): void {
   padding: var(--space-lg) var(--space-2xl) var(--space-xl);
   border-top: 1px solid var(--color-hairline);
   background: var(--color-bg-base);
+}
+
+/* ── Tool Status Bar ────────────────────────────────────────────────── */
+.chat-panel__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-2xl);
+  border-top: 1px solid var(--color-hairline);
+  background: var(--color-bg-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+.status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-circle);
+  background: var(--color-accent);
+  animation: pulse-status 1.2s ease-in-out infinite;
+}
+@keyframes pulse-status {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 
 .chat-panel__input-field {

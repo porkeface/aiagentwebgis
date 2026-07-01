@@ -153,6 +153,16 @@ class AmapService:
                 if data.get("status") != "1":
                     info = data.get("info", "Unknown error")
                     infocode = data.get("infocode", "")
+                    # QPS rate limit — retry with exponential backoff
+                    if infocode == "10021":
+                        if attempt < AMAP_MAX_RETRIES - 1:
+                            wait_time = AMAP_RETRY_BACKOFF_BASE * (3 ** attempt)
+                            logger.warning(
+                                "Amap QPS limit hit, retrying in %.1fs (attempt %d/%d)",
+                                wait_time, attempt + 1, AMAP_MAX_RETRIES,
+                            )
+                            await asyncio.sleep(wait_time)
+                            continue
                     raise ValueError(
                         f"Amap API error: {info} (code={infocode})"
                     )

@@ -59,13 +59,15 @@ def build_graph(
         return _compiled_graph
 
     # --- Build the LLM -------------------------------------------------------
-    from langchain_community.chat_models import ChatTongyi
+    from langchain_openai import ChatOpenAI
     from app.config import settings
 
-    model = ChatTongyi(
+    model = ChatOpenAI(
         model="qwen-plus",
-        dashscope_api_key=settings.dashscope_api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        api_key=settings.dashscope_api_key,
         temperature=0.3,
+        streaming=True,
     )
 
     # --- Build the agent -----------------------------------------------------

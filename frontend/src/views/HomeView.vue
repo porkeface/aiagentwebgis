@@ -1,11 +1,22 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import MapView from '@/components/map/MapView.vue'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
 
 const route = useRoute()
+
+// ── Mobile view toggle ────────────────────────────────────────────────────
+const mobileView = ref<'map' | 'chat'>('chat')
+
+function showMap(): void {
+  mobileView.value = 'map'
+}
+
+function showChat(): void {
+  mobileView.value = 'chat'
+}
 
 function handleAuthHint(): void {
   if (route.query.auth === 'required') {
@@ -19,18 +30,40 @@ watch(() => route.query.auth, handleAuthHint)
 
 <template>
   <div class="home-view">
-    <!-- The map fills the full viewport but is inset on the right by the
-         chat panel's width. This way the map's tiles never bleed under the
-         panel and the two never fight for stacking-context dominance. -->
-    <div class="home-view__map">
+    <!-- Desktop: map fills inset space; chat panel is fixed to the right -->
+    <div class="home-view__map" :class="{ 'is-visible': mobileView === 'map' }">
       <MapView />
     </div>
 
-    <!-- The chat panel is its own floating surface, lifted above the map
-         by z-index. It owns the right edge of the screen and always wins. -->
-    <aside class="home-view__panel">
+    <aside class="home-view__panel" :class="{ 'is-visible': mobileView === 'chat' }">
       <ChatPanel />
     </aside>
+
+    <!-- Mobile toggle bar -->
+    <div class="mobile-toggle">
+      <button
+        class="mobile-toggle__btn"
+        :class="{ 'is-active': mobileView === 'map' }"
+        @click="showMap"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 6v12a3 3 0 003 3h16a3 3 0 003-3V6a3 3 0 00-3-3H4a3 3 0 00-3 3z" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 3v18" stroke-linecap="round"/>
+          <path d="M1 9h8M1 15h8" stroke-linecap="round"/>
+        </svg>
+        <span>地图</span>
+      </button>
+      <button
+        class="mobile-toggle__btn"
+        :class="{ 'is-active': mobileView === 'chat' }"
+        @click="showChat"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>对话</span>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -83,12 +116,70 @@ watch(() => route.query.auth, handleAuthHint)
   .home-view__map {
     right: 0;
     z-index: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast) var(--ease-out-expo);
+  }
+  .home-view__map.is-visible {
+    opacity: 1;
+    pointer-events: auto;
   }
   .home-view__panel {
     width: 100%;
     border-left: none;
     box-shadow: none;
     z-index: 20;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast) var(--ease-out-expo);
+  }
+  .home-view__panel.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* ── Mobile Toggle Bar ────────────────────────────────────────────────── */
+.mobile-toggle {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  height: 56px;
+  background: var(--color-bg-base);
+  border-top: 1px solid var(--color-hairline);
+  backdrop-filter: blur(16px) saturate(1.4);
+}
+.mobile-toggle__btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-tertiary);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out-expo);
+}
+.mobile-toggle__btn.is-active {
+  color: var(--color-accent);
+}
+
+@media (max-width: 767px) {
+  .mobile-toggle {
+    display: flex;
+  }
+  /* Add bottom padding so content isn't hidden behind the toggle bar */
+  .home-view__panel {
+    padding-bottom: 56px;
   }
 }
 </style>

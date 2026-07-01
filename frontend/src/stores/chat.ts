@@ -26,6 +26,9 @@ export const useChatStore = defineStore("chat", () => {
   const historySessions = ref<ChatSessionSummary[]>([]);
   const historyLoading = ref(false);
 
+  // ── Tool status for UI feedback ────────────────────────────────────────────
+  const toolStatus = ref<string | null>(null);
+
   // ── Getters ────────────────────────────────────────────────────────────────
   const lastMessage = computed(() =>
     messages.value.length > 0 ? messages.value[messages.value.length - 1] : null,
@@ -55,8 +58,37 @@ export const useChatStore = defineStore("chat", () => {
     loading.value = true;
     error.value = null;
 
-    // Accumulate text for the assistant response
-    let assistantText = "";
+    // Stream the assistant response token by token.
+    // Text chunks arrive in a burst from the SSE reader; we queue them and
+    // drain one chunk per animation frame so Vue re-renders between each,
+    // producing a visible typewriter effect.
+    let assistantAdded = false;
+    const textQueue: string[] = [];
+    let drainScheduled = false;
+
+    function drainQueue(): void {
+      if (textQueue.length === 0) {
+        drainScheduled = false;
+        return;
+      }
+      drainScheduled = true;
+      requestAnimationFrame(() => {
+        const chunk = textQueue.shift();
+        if (chunk === undefined) {
+          drainScheduled = false;
+          return;
+        }
+        const msgs = messages.value;
+        if (msgs.length > 0 && msgs[msgs.length - 1].role === "assistant") {
+          const last = msgs[msgs.length - 1];
+          messages.value = [
+            ...msgs.slice(0, -1),
+            { ...last, content: last.content + chunk },
+          ];
+        }
+        drainQueue();
+      });
+    }
     const mapStore = useMapStore();
 
     const handleEvent = (event: SSEEvent): void => {
@@ -126,7 +158,9 @@ export const useChatStore = defineStore("chat", () => {
         }
 
         case "text": {
-          // event.data = { content: "actual text" } — direct from FormatterNode
+          // Clear tool status on first text token
+          toolStatus.value = null;
+          // event.data = { content: "actual text" }
           const data = event.data as Record<string, unknown> | null;
           const text = typeof data === "object" && data !== null && typeof data.content === "string"
             ? data.content
@@ -134,7 +168,12 @@ export const useChatStore = defineStore("chat", () => {
               ? event.data
               : "";
           if (text) {
-            assistantText += text;
+            if (!assistantAdded) {
+              addMessage("assistant", "");
+              assistantAdded = true;
+            }
+            textQueue.push(text);
+            if (!drainScheduled) drainQueue();
           }
           break;
         }
@@ -149,15 +188,15 @@ export const useChatStore = defineStore("chat", () => {
         }
 
         case "thinking":
+          toolStatus.value = "AI 正在思考...";
+          break;
+
         case "tool_calling": {
           const data = event.data as Record<string, unknown> | null;
           const content = typeof data === "object" && data !== null && typeof data.content === "string"
             ? data.content
             : "";
-          // Prepend progress info before the final text response
-          if (content) {
-            assistantText = assistantText ? assistantText + "\n" + content : content;
-          }
+          toolStatus.value = content || null;
           break;
         }
       }
@@ -165,11 +204,6 @@ export const useChatStore = defineStore("chat", () => {
 
     try {
       await sendChatMessage(content.trim(), sessionId.value, handleEvent);
-
-      // Add the accumulated assistant message
-      if (assistantText.trim()) {
-        addMessage("assistant", assistantText.trim());
-      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "发送消息失败，请稍后重试。";
       error.value = message;
@@ -285,6 +319,7 @@ export const useChatStore = defineStore("chat", () => {
     lastUserMessage,
     historySessions,
     historyLoading,
+    toolStatus,
     // getters
     lastMessage,
     messageCount,

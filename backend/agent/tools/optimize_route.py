@@ -1,15 +1,14 @@
-"""optimize_route tool — TSP-based optimal POI visit order.
+"""optimize_route tool — nearest-neighbour TSP for POI visit ordering.
 
-Computes the shortest path visiting all given POIs using Held-Karp DP
-(exact for N <= 15) or nearest-neighbor heuristic (N > 15).  Removes
-the longest edge from the Hamiltonian cycle to produce a linear path
-so the user doesn't have to "close the loop".
+Computes the shortest path visiting all given POIs using a greedy
+nearest-neighbor heuristic, then removes the longest edge from the
+Hamiltonian cycle to produce a linear path so the user doesn't have to
+"close the loop".
 """
 
 from __future__ import annotations
 
 import math
-import itertools
 from typing import Any
 
 from langchain_core.tools import tool
@@ -31,82 +30,10 @@ def _haversine_km(a: dict[str, Any], b: dict[str, Any]) -> float:
     return r * 2 * math.atan2(math.sqrt(x), math.sqrt(1 - x))
 
 
-def _held_karp_tsp(
-    pois: list[dict[str, Any]],
-) -> tuple[list[int], float]:
-    """Exact TSP via Held-Karp DP.  Returns (best_order, total_distance_km).
-
-    Only used for N <= 15 due to O(N^2 * 2^N) time/memory.
-    """
-    n = len(pois)
-    if n <= 2:
-        return (list(range(n)), _haversine_km(pois[0], pois[-1]) * 2)
-
-    # Precompute pairwise distances
-    dist = [[0.0] * n for _ in range(n)]
-    for i in range(n):
-        for j in range(n):
-            if i != j:
-                dist[i][j] = _haversine_km(pois[i], pois[j])
-
-    # DP[mask][i] = (cost, prev_mask, prev_j) for path ending at i covering 'mask' cities
-    size = 1 << n
-    dp: list[list[tuple[float, int, int] | None]] = [[None] * n for _ in range(size)]
-
-    # Base: start at city 0 (path of length 1)
-    dp[1][0] = (0.0, -1, -1)
-
-    for mask in range(1, size):
-        for last in range(n):
-            entry = dp[mask][last]
-            if entry is None:
-                continue
-            cost, _, _ = entry
-            for nxt in range(n):
-                if mask & (1 << nxt):
-                    continue
-                new_mask = mask | (1 << nxt)
-                new_cost = cost + dist[last][nxt]
-                existing = dp[new_mask][nxt]
-                if existing is None or new_cost < existing[0]:
-                    dp[new_mask][nxt] = (new_cost, mask, last)
-
-    # Find best full tour (all cities visited, end anywhere)
-    full_mask = size - 1
-    best_cost = float("inf")
-    best_last = 0
-    for last in range(n):
-        entry = dp[full_mask][last]
-        if entry is not None and entry[0] < best_cost:
-            best_cost = entry[0]
-            best_last = last
-
-    # Reconstruct path
-    order: list[int] = []
-    mask = full_mask
-    last = best_last
-    while mask:
-        entry = dp[mask][last]
-        if entry is None:
-            break
-        order.append(last)
-        _, prev_mask, prev_last = entry
-        mask = prev_mask
-        last = prev_last
-    order.reverse()
-
-    # Compute total round-trip distance (include back to start)
-    start_idx = order[0]
-    end_idx = order[-1]
-    total = best_cost + dist[end_idx][start_idx]
-
-    return (order, total)
-
-
 def _nearest_neighbor_tsp(
     pois: list[dict[str, Any]],
 ) -> tuple[list[int], float]:
-    """Nearest-neighbor heuristic for N > 15.  Simple O(N^2) greedy."""
+    """Nearest-neighbor greedy heuristic for TSP. O(N^2)."""
     n = len(pois)
     visited = [False] * n
     order: list[int] = [0]
@@ -149,10 +76,10 @@ def _tsp_linear_path(
     if n <= 1:
         return (list(pois), [], 0.0)
 
-    if n <= 15:
-        order, _ = _held_karp_tsp(pois)
-    else:
-        order, _ = _nearest_neighbor_tsp(pois)
+    # Use nearest-neighbor for all practical sizes; exact TSP is intractable
+    # for the 20+ POIs the agent often sends.  Held-Karp O(N^2·2^N) burns
+    # memory even at N=13 (dp table: 2^13×13 ≈ 106k cells).
+    order, _ = _nearest_neighbor_tsp(pois)
 
     # Build ordered list
     ordered = [pois[i] for i in order]
@@ -200,9 +127,8 @@ async def optimize_route(
 ) -> dict[str, Any]:
     """优化多 POI 的访问顺序以最小化总路程（解 TSP）。
 
-    给定一天内要访问的 POI 列表，计算最优访问顺序，避免来回穿梭。
-    使用精确算法（N≤15）或启发式算法（N>15）。
-    返回排序后的 POI 列表、段间距离和总距离。
+    给定一天内要访问的 POI 列表，使用最近邻贪心算法计算最优访问顺序，
+    避免来回穿梭。返回排序后的 POI 列表、段间距离和总距离。
 
     使用场景：已选定某天的 POI 后，调用这个工具获取最优的访问顺序。
 

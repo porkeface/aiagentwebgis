@@ -254,25 +254,38 @@ async def _event_generator(
             name = event.get("name", "")
             data = event.get("data", {})
 
+            # ---- LLM starts thinking ----
+            if kind == "on_chat_model_start":
+                accumulated_text = ""
+                yield _format_sse_event("message", {
+                    "type": "thinking",
+                    "data": {"content": "AI 正在思考..."},
+                })
+
             # ---- LLM token stream ----
             if kind == "on_chat_model_stream":
                 chunk = data.get("chunk")
                 if chunk and hasattr(chunk, "content") and chunk.content:
                     accumulated_text += chunk.content
+                    # Stream each chunk immediately for real-time display
+                    yield _format_sse_event("message", {
+                        "type": "text",
+                        "data": {"content": chunk.content},
+                    })
 
-            # ---- LLM response complete ----
+            # ---- LLM response complete (also streamed: drops duplicate) ----
             elif kind == "on_chat_model_end":
+                # ChatOpenAI with streaming=True may still emit on_chat_model_end
+                # with the full concatenated content. We only use it as a
+                # fallback when streaming delivered nothing.
                 output = data.get("output")
                 if output and hasattr(output, "content") and output.content:
-                    accumulated_text = output.content
-
-            # ---- Chain stream (fallback) ----
-            elif kind == "on_chain_stream":
-                chunk = data.get("chunk")
-                if isinstance(chunk, dict) and "messages" in chunk:
-                    for msg in chunk["messages"]:
-                        if hasattr(msg, "content") and msg.content:
-                            accumulated_text = msg.content
+                    if not accumulated_text:
+                        accumulated_text = output.content
+                        yield _format_sse_event("message", {
+                            "type": "text",
+                            "data": {"content": output.content},
+                        })
 
             # ---- Tool starts ----
             elif kind == "on_tool_start":
@@ -299,6 +312,16 @@ async def _event_generator(
                 tool_name = name or ""
                 output = data.get("output")
 
+                # Unwrap LangChain ToolMessage wrapper (streaming=True path)
+                if hasattr(output, "content") and hasattr(output, "tool_call_id"):
+                    output = output.content
+                    # API responses may be JSON-stringified inside the wrapper
+                    if isinstance(output, str):
+                        try:
+                            output = json.loads(output)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
                 # search_pois / search_nearby → accumulate POIs + emit poi_result
                 if tool_name in ("search_pois", "search_nearby"):
                     if isinstance(output, list):
@@ -322,13 +345,6 @@ async def _event_generator(
                             yield summary
                             p = json.loads(summary.split("\n")[1].replace("data: ", "", 1))
                             map_snapshot["plan_summary"] = p.get("data", {})
-
-        # ---- Final text event ----
-        if accumulated_text.strip():
-            yield _format_sse_event("message", {
-                "type": "text",
-                "data": {"content": accumulated_text.strip()},
-            })
 
         # ---- Build messages list for DB persistence ----
         messages_for_db = [
