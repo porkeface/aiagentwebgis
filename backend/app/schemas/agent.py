@@ -23,6 +23,7 @@ class ChatSSEEvent(BaseModel):
         "plan_summary",
         "text",
         "error",
+        "progress",
     ]
     data: dict = Field(default_factory=dict)
     content: str | None = None
