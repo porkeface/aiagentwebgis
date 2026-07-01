@@ -269,12 +269,38 @@ def _handle_tool_result(
             map_snapshot["pois"] = parsed.get("data", {}).get("pois", [])
         return event_str
 
-    # plan_day_route → ingest coordinates into POI registry
-    if tool_name == "plan_day_route":
-        if isinstance(output, dict):
-            ordered = output.get("ordered_pois", [])
-            if ordered:
-                registry.ingest_route_pois(ordered)
+    # plan_route → emit single route for map display
+    if tool_name == "plan_route":
+        if isinstance(output, dict) and output.get("polyline"):
+            origin_name = output.get("origin_name", "起点")
+            dest_name = output.get("dest_name", "终点")
+            origin_lng = output.get("origin_lng", 0) or 0
+            origin_lat = output.get("origin_lat", 0) or 0
+            dest_lng = output.get("dest_lng", 0) or 0
+            dest_lat = output.get("dest_lat", 0) or 0
+            ev = {
+                "type": "route_result",
+                "data": {"daily_plans": [{
+                    "day": 1,
+                    "day_title": output.get("route_name", f"{origin_name} → {dest_name}"),
+                    "pois": [
+                        {"id": "plan_route_origin", "name": origin_name,
+                         "lng": origin_lng, "lat": origin_lat,
+                         "category": ""},
+                        {"id": "plan_route_dest", "name": dest_name,
+                         "lng": dest_lng, "lat": dest_lat,
+                         "category": ""},
+                    ],
+                    "total_distance_km": output.get("distance_km", 0),
+                    "total_transit_min": output.get("duration_min", 0),
+                    "polyline": output.get("polyline", ""),
+                    "segments": output.get("segments", []),
+                }]},
+            }
+            ev_str = _format_sse_event("message", ev)
+            parsed = json.loads(ev_str.split("\n")[1].replace("data: ", "", 1))
+            map_snapshot["routes"] = parsed.get("data", {}).get("daily_plans", [])
+            return ev_str
         return None
 
     # submit_plan → route_result + plan_summary

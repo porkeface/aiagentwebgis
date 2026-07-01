@@ -176,6 +176,8 @@ export class RouteLayerRenderer {
       ? new Set(this._plans.map((p) => p.day))
       : new Set([this._activeDay])
 
+    const clickFn = this._onPoiClick
+
     for (const plan of this._plans) {
       if (!visibleDays.has(plan.day)) continue
 

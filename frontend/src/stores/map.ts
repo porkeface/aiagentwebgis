@@ -125,6 +125,9 @@ export const useMapStore = defineStore("map", () => {
   const activeDay = ref<number>(0); // 0 = all days, 1+ = specific day
   const timelineOpen = ref<boolean>(true);
 
+  // ── Current transport mode ──────────────────────────────────────────────────
+  const transportMode = ref<string>('driving');
+
   // ── POI selection for planning ─────────────────────────────────────────────
   const selectedPoiIds = ref<Set<string>>(new Set());
   const poiPanelOpen = ref(false);
@@ -294,6 +297,10 @@ export const useMapStore = defineStore("map", () => {
     timelineOpen.value = false;
   }
 
+  function setTransportMode(mode: string): void {
+    transportMode.value = mode;
+  }
+
   return {
     // state
     pois,
@@ -306,6 +313,7 @@ export const useMapStore = defineStore("map", () => {
     planSummary,
     activeDay,
     timelineOpen,
+    transportMode,
     // getters
     poiCount,
     selectedPoiCount,
@@ -335,5 +343,6 @@ export const useMapStore = defineStore("map", () => {
     getSelectedPois,
     setPoiPanelOpen,
     togglePoiPanel,
+    setTransportMode,
   };
 });

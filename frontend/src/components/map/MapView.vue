@@ -20,6 +20,7 @@ const tripStore = useTripStore()
 
 // ── Reactive State ───────────────────────────────────────────────────────────
 const activePanel = ref<'trips' | null>(null)
+const selectedMode = ref<string>('driving')
 const pois = computed(() => mapStore.pois)
 const routes = computed(() => mapStore.routes)
 const hasRoutes = computed(() => routes.value.length > 0)
@@ -301,7 +302,7 @@ function onPOIsClick(): void {
 
     <!-- 行程 timeline panel -->
     <div v-if="hasRoutes && mapStore.timelineOpen" class="map-panel">
-      <ItineraryTimeline />
+      <ItineraryTimeline @close="mapStore.closeTimeline" />
     </div>
 
     <button
@@ -317,6 +318,23 @@ function onPOIsClick(): void {
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke-linejoin="round" />
       </svg>
     </button>
+
+    <!-- Transport mode selector -->
+    <div v-if="hasRoutes" class="mode-selector">
+      <button
+        v-for="m in [{key:'driving',label:'驾车',icon:'M5 12h14M13 5l7 7-7 7'},{key:'walking',label:'步行',icon:'M12 2v20M12 2L8 6M12 2l4 4'},{key:'bicycling',label:'骑行',icon:'M5 20a2 2 0 100-4 2 2 0 000 4zM19 8a2 2 0 100-4 2 2 0 000 4zM19 8l-7 4-7-4'},{key:'transit',label:'公交',icon:'M4 15l4-8h8l4 8M10 14h4M8 19v2M16 19v2'}]"
+        :key="m.key"
+        class="mode-selector__btn"
+        :class="{ active: selectedMode === m.key }"
+        :title="m.label"
+        @click="selectedMode = m.key"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path :d="m.icon" />
+        </svg>
+        <span>{{ m.label }}</span>
+      </button>
+    </div>
 
     <div
       v-if="hasRoutes && !mapStore.timelineOpen && mapStore.availableDays.length > 1"
@@ -581,5 +599,49 @@ function onPOIsClick(): void {
 :deep(.amap-logo),
 :deep(.amap-copyright) {
   display: none !important;
+}
+
+/* Transport mode selector */
+.mode-selector {
+  position: absolute;
+  top: calc(var(--space-xl) + 56px);
+  right: var(--space-xl);
+  z-index: 1150;
+  display: flex;
+  gap: var(--space-2xs);
+  padding: var(--space-xs);
+  background: rgba(20, 24, 31, 0.78);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-md);
+}
+
+.mode-selector__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+  transition: all var(--duration-fast) var(--ease-out-expo);
+  white-space: nowrap;
+  background: transparent;
+}
+
+.mode-selector__btn:hover {
+  color: var(--color-text-primary);
+  background: rgba(243, 236, 225, 0.04);
+}
+
+.mode-selector__btn.active {
+  background: var(--color-text-primary);
+  color: var(--color-bg-deep);
 }
 </style>

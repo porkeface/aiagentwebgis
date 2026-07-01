@@ -41,15 +41,21 @@ async def plan_route(
         wp_list = [(wp["lng"], wp["lat"]) for wp in waypoints]
 
     if wp_list and mode == "driving":
-        return await amap.plan_route_with_waypoints(
+        result = await amap.plan_route_with_waypoints(
             origin=(origin_lng, origin_lat),
             destination=(dest_lng, dest_lat),
             waypoints=wp_list,
             mode=mode,
         )
-
-    return await amap.plan_route(
-        origin=(origin_lng, origin_lat),
-        destination=(dest_lng, dest_lat),
-        mode=mode,
-    )
+    else:
+        result = await amap.plan_route(
+            origin=(origin_lng, origin_lat),
+            destination=(dest_lng, dest_lat),
+            mode=mode,
+        )
+    # inject args so agent.py can emit POI coordinates for map display
+    result["origin_lng"] = origin_lng
+    result["origin_lat"] = origin_lat
+    result["dest_lng"] = dest_lng
+    result["dest_lat"] = dest_lat
+    return result
