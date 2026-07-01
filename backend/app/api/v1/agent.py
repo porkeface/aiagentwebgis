@@ -82,6 +82,20 @@ class POIRegistry:
             if pid:
                 self._pois[pid] = poi
 
+    def ingest_route_pois(self, ordered_pois: list[dict[str, Any]]) -> None:
+        """Ingest POI name/coordinates from plan_day_route ordered_pois output."""
+        for p in ordered_pois:
+            # plan_day_route returns name not id — match by name if id missing
+            pid = str(p.get("id") or p.get("poi_id", ""))
+            if pid and pid not in self._pois:
+                self._pois[pid] = {
+                    "id": pid,
+                    "name": p.get("name", pid),
+                    "lng": p.get("lng", 0),
+                    "lat": p.get("lat", 0),
+                    "category": p.get("category", ""),
+                }
+
     def resolve(self, poi_id: str) -> dict[str, Any] | None:
         """Look up a POI by id."""
         return self._pois.get(str(poi_id))
@@ -161,13 +175,15 @@ def _build_route_result_event(
             pid = str(ref.get("poi_id", ""))
             full = registry.resolve(pid)
             if full is None:
-                # POI not found — still include a stub
+                # POI not in registry (user-provided) — use ref fields with fallback
+                ref_lng = ref.get("lng", 0.0)
+                ref_lat = ref.get("lat", 0.0)
                 day_pois.append({
                     "id": pid,
-                    "name": f"POI {pid[:8]}",
-                    "category": "",
-                    "lng": 0.0,
-                    "lat": 0.0,
+                    "name": ref.get("name", f"POI {pid[:8]}"),
+                    "category": ref.get("category", ""),
+                    "lng": float(ref_lng) if ref_lng else 0.0,
+                    "lat": float(ref_lat) if ref_lat else 0.0,
                     "time_slot": ref.get("time_slot"),
                     "visit_duration_min": ref.get("visit_duration_min"),
                     "meal_type": ref.get("meal_type"),
@@ -194,6 +210,8 @@ def _build_route_result_event(
             "day": day_plan.get("day", 1),
             "day_title": day_plan.get("day_theme", f"第{day_plan.get('day', 1)}天"),
             "pois": day_pois,
+            "total_duration_min": day_plan.get("total_duration_min", 0),
+            "total_transit_min": day_plan.get("total_transit_min", 0),
         })
 
     return _format_sse_event("message", {
@@ -315,7 +333,6 @@ async def _event_generator(
                 # Unwrap LangChain ToolMessage wrapper (streaming=True path)
                 if hasattr(output, "content") and hasattr(output, "tool_call_id"):
                     output = output.content
-                    # API responses may be JSON-stringified inside the wrapper
                     if isinstance(output, str):
                         try:
                             output = json.loads(output)
@@ -331,6 +348,13 @@ async def _event_generator(
                         yield event_str
                         parsed = json.loads(event_str.split("\n")[1].replace("data: ", "", 1))
                         map_snapshot["pois"] = parsed.get("data", {}).get("pois", [])
+
+                # plan_day_route → cache coordinates for submit_plan resolution
+                elif tool_name == "plan_day_route":
+                    if isinstance(output, dict):
+                        ordered = output.get("ordered_pois", [])
+                        if ordered:
+                            registry.ingest_route_pois(ordered)
 
                 # submit_plan → emit route_result + plan_summary
                 elif tool_name == "submit_plan":

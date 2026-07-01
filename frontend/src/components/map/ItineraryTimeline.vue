@@ -238,6 +238,12 @@ function formatTimeSlot(slot: string | undefined): string {
                             </div>
                             <div class="itin__stop-meta">
                                 <span
+                                    v-if="poi.visit_duration_min"
+                                    class="itin__chip itin__chip--duration"
+                                >
+                                    {{ formatDuration(poi.visit_duration_min) }}
+                                </span>
+                                <span
                                     v-if="poi.time_slot"
                                     class="itin__chip itin__chip--time-slot"
                                 >
@@ -677,6 +683,12 @@ function formatTimeSlot(slot: string | undefined): string {
     color: var(--color-accent);
     background: rgba(232, 98, 60, 0.08);
     border-color: rgba(232, 98, 60, 0.25);
+}
+
+.itin__chip--duration {
+    color: var(--color-sage);
+    background: rgba(126, 148, 112, 0.08);
+    border-color: rgba(126, 148, 112, 0.25);
 }
 
 .itin__stop-next {

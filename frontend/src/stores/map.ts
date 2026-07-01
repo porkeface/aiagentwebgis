@@ -43,6 +43,8 @@ export interface DailyPlan {
   day_title?: string;
   pois: RoutePOI[];
   total_distance_km?: number;
+  total_duration_min?: number;
+  total_transit_min?: number;
   segments?: RouteSegment[];
 }
 
