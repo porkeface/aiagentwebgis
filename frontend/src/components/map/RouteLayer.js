@@ -65,9 +65,19 @@ export class RouteLayerRenderer {
     this._markers = []
     /** @type {AMap.Marker[]} */
     this._poiMarkers = []
+    /** @type {(poi: import('@/types').POI) => void} */
+    this._onPoiClick = null
   }
 
   // ── Public API ─────────────────────────────────────────────────────────
+
+  /**
+   * Set the callback for POI marker clicks.
+   * @param {(poi: import('@/types').POI) => void} fn
+   */
+  onPoiClick(fn) {
+    this._onPoiClick = fn
+  }
 
   /**
    * Show search-result POIs on the map immediately (before route planning).
@@ -76,11 +86,13 @@ export class RouteLayerRenderer {
   setPois(pois) {
     this._clearPoiMarkers()
     if (!this._map || !this._AMap) return
+    const clickFn = this._onPoiClick
     for (const poi of pois) {
-      const content = `<div style="
+      const content = `<div class="poi-dot" data-poi-id="${poi.id}" style="
         width:22px;height:22px;
         background:#e8623c;border-radius:50%;
         border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);
+        cursor:pointer;
       "></div>`
       const marker = new this._AMap.Marker({
         position: [poi.lng, poi.lat],
@@ -88,6 +100,9 @@ export class RouteLayerRenderer {
         offset: new this._AMap.Pixel(-12, -12),
         zIndex: 200,
       })
+      if (clickFn) {
+        marker.on('click', () => clickFn(poi))
+      }
       this._map.add(marker)
       this._poiMarkers.push(marker)
     }
@@ -226,6 +241,9 @@ export class RouteLayerRenderer {
           offset: new this._AMap.Pixel(-14, -14),
           zIndex,
         })
+        if (clickFn) {
+          marker.on('click', () => clickFn(poi))
+        }
         this._map.add(marker)
         this._markers.push(marker)
       }

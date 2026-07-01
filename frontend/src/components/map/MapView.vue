@@ -100,6 +100,9 @@ onMounted(async () => {
   ;(document.getElementById('amap-container') as any)._amap = map
   const renderer = new RouteLayerRenderer(AMap_sdk)
   renderer.attach(map)
+  renderer.onPoiClick((poi) => {
+    mapStore.selectPOI(poi as any)
+  })
   routeRenderer.value = renderer
 
   // Render initial data if already present
