@@ -194,20 +194,33 @@ def _haversine_fallback(pois: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 async def agent_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
-    """LLM call node — returns AIMessage with text content + optional tool_calls.
+    """LLM call node — streams tokens per-chunk for responsive UI.
 
-    Text streaming to the frontend is handled by the API layer's
-    ``stream_mode="updates"`` — each token is yielded immediately as the
-    node output changes.
+    Uses ``model.astream()`` so the API layer can intercept per-token
+    chunks.  The API layer uses ``astream_events`` on the *compiled graph*
+    to receive ``on_chat_model_stream`` events for SSE text streaming.
     """
     model = _get_model()
     system_prompt = SystemMessage(content=AGENT_SYSTEM_PROMPT)
     full_messages = [system_prompt] + state["messages"]
 
-    # Use ainvoke (non-streaming to the graph) — the API layer uses
-    # astream_events on the model directly for per-token SSE events.
-    response = await model.ainvoke(full_messages)
-    return {"messages": [response]}
+    accumulated = AIMessage(content="")
+    async for chunk in model.astream(full_messages):
+        if isinstance(chunk, AIMessageChunk):
+            if chunk.content:
+                accumulated.content += chunk.content
+            if chunk.tool_call_chunks:
+                tool_chunks = []
+                for tc in chunk.tool_call_chunks:
+                    tool_chunks.append({
+                        "index": tc.get("index", 0),
+                        "id": tc.get("id"),
+                        "name": tc.get("name"),
+                        "args": tc.get("args", ""),
+                    })
+                _merge_tool_call_chunks(accumulated, tool_chunks)
+
+    return {"messages": [accumulated]}
 
 
 async def tools_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
