@@ -73,6 +73,13 @@ function formatReviews(n: number | undefined | null): string {
       <button class="poi-select-panel__select-all" @click="selectAll">
         {{ selectAllLabel }}
       </button>
+      <button
+        v-if="selectedCount > 0"
+        class="poi-select-panel__header-plan"
+        @click="startPlanning"
+      >
+        规划 ({{ selectedCount }})
+      </button>
       <button class="poi-select-panel__close" @click="emit('close')">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
@@ -179,6 +186,22 @@ function formatReviews(n: number | undefined | null): string {
   color: var(--color-accent);
 }
 
+.poi-select-panel__header-plan {
+  padding: var(--space-xs) var(--space-md);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out-expo);
+  white-space: nowrap;
+}
+.poi-select-panel__header-plan:hover {
+  filter: brightness(1.1);
+}
+
 .poi-select-panel__close {
   display: flex;
   align-items: center;
@@ -201,7 +224,10 @@ function formatReviews(n: number | undefined | null): string {
 .poi-select-panel__list {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-md) 0;
+  padding: var(--space-md) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
 }
 
 .poi-select-panel__empty {
@@ -220,13 +246,11 @@ function formatReviews(n: number | undefined | null): string {
 .poi-card {
   display: flex;
   gap: var(--space-md);
-  padding: var(--space-md) var(--space-xl);
+  padding: var(--space-md) var(--space-lg);
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-out-expo);
-  border-bottom: 1px solid var(--color-hairline);
-}
-.poi-card:last-child {
-  border-bottom: none;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
 }
 .poi-card:hover {
   background: var(--color-bg-subtle);

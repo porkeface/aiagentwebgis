@@ -26,8 +26,6 @@ const activePanel = ref<'trips' | null>(null)
 const pois = computed(() => mapStore.pois)
 const routes = computed(() => mapStore.routes)
 const hasRoutes = computed(() => routes.value.length > 0)
-const showPoiButton = computed(() => pois.value.length > 0 && !hasRoutes.value)
-const showPoiPanel = computed(() => showPoiButton.value && mapStore.poiPanelOpen)
 const selectedPOI = computed(() => mapStore.selectedPOI)
 const leafletMap = shallowRef<L.Map | null>(null)
 
@@ -170,8 +168,15 @@ function onTripsClick(): void {
     activePanel.value = null
   } else {
     mapStore.timelineOpen = false        // mutually exclusive
+    mapStore.setPoiPanelOpen(false)
     activePanel.value = 'trips'
   }
+}
+
+function onPOIsClick(): void {
+  mapStore.timelineOpen = false
+  activePanel.value = null
+  mapStore.togglePoiPanel()
 }
 </script>
 
@@ -202,8 +207,22 @@ function onTripsClick(): void {
       />
     </l-map>
 
-    <!-- Top-left: segmented nav bar — 查看行程 + 历史规划 -->
+    <!-- Top-left: segmented nav bar — 兴趣点 + 行程规划 + 历史规划 -->
     <div class="map-navbar">
+      <button
+        v-if="pois.length > 0 && !hasRoutes"
+        class="map-navbar__btn"
+        :class="{ 'is-active': mapStore.poiPanelOpen }"
+        title="兴趣点"
+        @click="onPOIsClick"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="12" cy="10" r="3" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span>兴趣点</span>
+        <span class="map-navbar__badge numeric">{{ mapStore.poiCount }}</span>
+      </button>
       <button
         v-if="hasRoutes"
         class="map-navbar__btn"
@@ -236,8 +255,8 @@ function onTripsClick(): void {
       <TripListDrawer @close="activePanel = null" />
     </div>
 
-    <!-- POI 兴趣点选择面板 — browse mode only -->
-    <div v-if="showPoiPanel" class="map-panel">
+    <!-- 兴趣点 panel -->
+    <div v-if="mapStore.poiPanelOpen && pois.length > 0 && !hasRoutes" class="map-panel">
       <PoiSelectPanel @close="mapStore.setPoiPanelOpen(false)" />
     </div>
 
@@ -245,20 +264,6 @@ function onTripsClick(): void {
     <div v-if="hasRoutes && mapStore.timelineOpen" class="map-panel">
       <ItineraryTimeline />
     </div>
-
-    <!-- Floating POI button — visible when browse-mode POIs are loaded -->
-    <button
-      v-if="showPoiButton"
-      class="map-poi-btn"
-      @click="mapStore.togglePoiPanel()"
-    >
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" />
-        <circle cx="12" cy="10" r="3" stroke-linecap="round" stroke-linejoin="round" />
-      </svg>
-      <span>兴趣点</span>
-      <span class="map-poi-btn__badge">{{ mapStore.poiCount }}</span>
-    </button>
 
     <button
       class="map-dark-toggle"
