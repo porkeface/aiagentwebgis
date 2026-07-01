@@ -179,7 +179,10 @@ export const useMapStore = defineStore("map", () => {
         day_title: r.day_title,
         pois: r.pois ?? [],
         total_distance_km: r.total_distance_km ?? 0,
+        total_duration_min: r.total_duration_min ?? 0,
+        total_transit_min: r.total_transit_min ?? 0,
         segments: r.segments ?? [],
+        polyline: (r as DailyPlan).polyline ?? '',
       }),
     );
   }

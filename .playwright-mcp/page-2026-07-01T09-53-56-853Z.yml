@@ -1,0 +1,132 @@
+- generic [ref=f19e3]:
+  - generic [ref=f19e5]:
+    - generic [ref=f19e6]:
+      - generic:
+        - generic:
+          - button "1" [ref=f19e63] [cursor=pointer]:
+            - generic [ref=f19e65]: "1"
+          - button "2" [ref=f19e66] [cursor=pointer]:
+            - generic [ref=f19e68]: "2"
+          - button "3" [ref=f19e69] [cursor=pointer]:
+            - generic [ref=f19e71]: "3"
+          - button "4" [ref=f19e72] [cursor=pointer]:
+            - generic [ref=f19e74]: "4"
+          - button "5" [ref=f19e75] [cursor=pointer]:
+            - generic [ref=f19e77]: "5"
+          - button "6" [ref=f19e78] [cursor=pointer]:
+            - generic [ref=f19e80]: "6"
+          - button "7" [ref=f19e81] [cursor=pointer]:
+            - generic [ref=f19e83]: "7"
+          - button "8" [ref=f19e84] [cursor=pointer]:
+            - generic [ref=f19e86]: "8"
+          - button "9" [ref=f19e87] [cursor=pointer]:
+            - generic [ref=f19e89]: "9"
+          - button "10" [ref=f19e90] [cursor=pointer]:
+            - generic [ref=f19e92]: "10"
+          - button "11" [ref=f19e93] [cursor=pointer]:
+            - generic [ref=f19e95]: "11"
+          - button "12" [ref=f19e96] [cursor=pointer]:
+            - generic [ref=f19e98]: "12"
+          - button "13" [ref=f19e99] [cursor=pointer]:
+            - generic [ref=f19e101]: "13"
+          - button "14" [ref=f19e102] [cursor=pointer]:
+            - generic [ref=f19e104]: "14"
+          - button "15" [ref=f19e105] [cursor=pointer]:
+            - generic [ref=f19e107]: "15"
+          - button "16" [ref=f19e108] [cursor=pointer]:
+            - generic [ref=f19e110]: "16"
+          - button "17" [ref=f19e111] [cursor=pointer]:
+            - generic [ref=f19e113]: "17"
+          - button "18" [ref=f19e114] [cursor=pointer]:
+            - generic [ref=f19e116]: "18"
+          - button "19" [ref=f19e117] [cursor=pointer]:
+            - generic [ref=f19e119]: "19"
+          - button "20" [ref=f19e120] [cursor=pointer]:
+            - generic [ref=f19e122]: "20"
+          - button "21" [ref=f19e123] [cursor=pointer]:
+            - generic [ref=f19e125]: "21"
+          - button "22" [ref=f19e126] [cursor=pointer]:
+            - generic [ref=f19e128]: "22"
+          - button "23" [ref=f19e129] [cursor=pointer]:
+            - generic [ref=f19e131]: "23"
+          - button "24" [ref=f19e132] [cursor=pointer]:
+            - generic [ref=f19e134]: "24"
+          - button "25" [ref=f19e135] [cursor=pointer]:
+            - generic [ref=f19e137]: "25"
+          - button "26" [ref=f19e138] [cursor=pointer]:
+            - generic [ref=f19e140]: "26"
+          - button "27" [ref=f19e141] [cursor=pointer]:
+            - generic [ref=f19e143]: "27"
+          - button "28" [ref=f19e144] [cursor=pointer]:
+            - generic [ref=f19e146]: "28"
+          - button "29" [ref=f19e147] [cursor=pointer]:
+            - generic [ref=f19e149]: "29"
+          - button "30" [ref=f19e150] [cursor=pointer]:
+            - generic [ref=f19e152]: "30"
+          - button "31" [ref=f19e153] [cursor=pointer]:
+            - generic [ref=f19e155]: "31"
+          - button "32" [ref=f19e156] [cursor=pointer]:
+            - generic [ref=f19e158]: "32"
+          - button "33" [ref=f19e159] [cursor=pointer]:
+            - generic [ref=f19e161]: "33"
+          - button "34" [ref=f19e162] [cursor=pointer]:
+            - generic [ref=f19e164]: "34"
+          - button "35" [ref=f19e165] [cursor=pointer]:
+            - generic [ref=f19e167]: "35"
+          - button "36" [ref=f19e168] [cursor=pointer]:
+            - generic [ref=f19e170]: "36"
+          - button "37" [ref=f19e171] [cursor=pointer]:
+            - generic [ref=f19e173]: "37"
+          - button "38" [ref=f19e174] [cursor=pointer]:
+            - generic [ref=f19e176]: "38"
+          - button "39" [ref=f19e177] [cursor=pointer]:
+            - generic [ref=f19e179]: "39"
+          - button "40" [ref=f19e180] [cursor=pointer]:
+            - generic [ref=f19e182]: "40"
+      - generic [ref=f19e7]:
+        - link "Leaflet" [ref=f19e8] [cursor=pointer]:
+          - /url: https://leafletjs.com
+          - img [ref=f19e9]
+          - text: Leaflet
+        - text: "| © 高德地图"
+    - generic [ref=f19e13]:
+      - button "兴趣点 40" [ref=f19e183] [cursor=pointer]:
+        - img [ref=f19e184]
+        - generic [ref=f19e187]: 兴趣点
+        - generic [ref=f19e188]: "40"
+      - button "历史规划" [ref=f19e14] [cursor=pointer]:
+        - img [ref=f19e15]
+        - generic [ref=f19e18]: 历史规划
+    - button "切换深色" [ref=f19e19] [cursor=pointer]:
+      - img [ref=f19e20]
+  - complementary [ref=f19e22]:
+    - generic [ref=f19e23]:
+      - generic [ref=f19e24]:
+        - generic [ref=f19e25]:
+          - generic [ref=f19e28]: ATELIER · 2026
+          - heading "Travel Atlas" [level=1] [ref=f19e29]:
+            - text: Travel
+            - emphasis [ref=f19e30]: Atlas
+          - paragraph [ref=f19e31]: A concierge for the curious traveler
+        - generic [ref=f19e32]:
+          - button "对话历史" [ref=f19e33] [cursor=pointer]:
+            - img [ref=f19e34]
+          - button "登录" [ref=f19e37] [cursor=pointer]
+      - generic [ref=f19e38]:
+        - article [ref=f19e189]:
+          - generic [ref=f19e191]: YOU
+          - generic [ref=f19e193]:
+            - paragraph [ref=f19e194]: 帮我规划莆田一日游
+            - generic [ref=f19e196]: 17:53
+        - article [ref=f19e197]:
+          - generic [ref=f19e200]: CONCIERGE
+          - generic [ref=f19e201]:
+            - generic [ref=f19e206]: Composing your itinerary…
+            - generic [ref=f19e208]: 17:53
+      - generic [ref=f19e211]: 正在 ...
+      - generic [ref=f19e56]:
+        - generic [ref=f19e57]:
+          - textbox "Begin a new journey…" [disabled] [ref=f19e58]
+          - button "发送" [disabled] [ref=f19e59]:
+            - img [ref=f19e60]
+        - generic [ref=f19e62]: Press Enter to send · Shift+Enter for newline
