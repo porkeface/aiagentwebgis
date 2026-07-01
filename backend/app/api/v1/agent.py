@@ -336,23 +336,17 @@ async def _event_generator(
 ) -> AsyncGenerator[str, None]:
     """Generate SSE events from the custom ReAct StateGraph.
 
-    Uses ``astream(stream_mode=["custom", "messages"])``:
-    - ``custom``: per-token text chunks from agent_node's stream_writer
-    - ``messages``: AIMessage (LLM output + tool_calls) and ToolMessage (tool results)
+    Uses ``astream(stream_mode="updates")`` — each node's output is yielded
+    as a dict of {node_name: node_output}.  The API layer extracts AIMessages
+    (LLM text + tool_calls) and ToolMessages (tool results) from updates.
     """
     map_snapshot: dict[str, Any] = {"pois": [], "routes": [], "plan_summary": None}
     messages_for_db: list[dict[str, Any]] | None = None
-    # stream_writer is passed via config["configurable"] to agent_node
-    custom_writer: Any | None = None
 
     try:
         graph = build_graph()
         config: dict[str, Any] = {
-            "configurable": {
-                "thread_id": session_id,
-                # stream_writer placeholder — populated below
-                "stream_writer": None,
-            },
+            "configurable": {"thread_id": session_id},
         }
 
         initial_state = {
@@ -363,82 +357,70 @@ async def _event_generator(
         registry = POIRegistry()
         progress = ProgressTracker()
         accumulated_text = ""
-        pending_tool_calls: list[tuple[str, dict[str, Any]]] = []
 
-        async for mode, chunk in graph.astream(
-            initial_state, config, stream_mode=["custom", "messages"],
-        ):
-            # ---- Custom events (per-token text streaming) ----
-            if mode == "custom":
-                token: str = chunk  # type: ignore[annotation-type-check]
-                accumulated_text += token
-                yield _format_sse_event("message", {
-                    "type": "text",
-                    "data": {"content": token},
-                })
-
-            # ---- Message events (AIMessage / ToolMessage entering state) ----
-            elif mode == "messages":
-                msg, metadata = chunk  # type: ignore[annotation-type-check]
-                node = metadata.get("langgraph_node", "")
-
-                if node == "agent_node":
-                    # AIMessage: LLM output. May have tool_calls.
-                    if isinstance(msg, AIMessage):
-                        tc_list = getattr(msg, "tool_calls", None) or []
-                        if tc_list:
-                            # First text token of the turn → thinking event
-                            yield _format_sse_event("message", {
-                                "type": "thinking",
-                                "data": {"content": "AI 正在思考..."},
-                            })
-                            for tc in tc_list:
-                                label = progress.add_tool(tc["name"], tc["args"])
+        # Use stream_mode="updates" — each step yields {node_name: node_output}
+        async for update in graph.astream(initial_state, config, stream_mode="updates"):
+            for node_name, output in update.items():
+                if node_name == "agent_node":
+                    msgs = output.get("messages", [])
+                    for m in msgs:
+                        if isinstance(m, AIMessage):
+                            # Emit text (accumulated for DB)
+                            if m.content:
+                                accumulated_text += m.content
                                 yield _format_sse_event("message", {
-                                    "type": "tool_calling",
-                                    "data": {"content": label},
+                                    "type": "text",
+                                    "data": {"content": m.content},
                                 })
-                                pending_tool_calls.append((tc["name"], tc["args"]))
+                            # Emit tool_calling events
+                            tc_list = getattr(m, "tool_calls", None) or []
+                            if tc_list:
+                                yield _format_sse_event("message", {
+                                    "type": "thinking",
+                                    "data": {"content": "AI 正在思考..."},
+                                })
+                                for tc in tc_list:
+                                    label = progress.add_tool(tc["name"], tc["args"])
+                                    yield _format_sse_event("message", {
+                                        "type": "tool_calling",
+                                        "data": {"content": label},
+                                    })
 
-                elif node == "tools_node":
-                    # ToolMessage: a tool's result
-                    if isinstance(msg, ToolMessage):
-                        tool_name = getattr(msg, "name", "")
-                        progress.mark_complete()
+                elif node_name == "tools_node":
+                    msgs = output.get("messages", [])
+                    for m in msgs:
+                        if isinstance(m, ToolMessage):
+                            tool_name = getattr(m, "name", "")
+                            progress.mark_complete()
 
-                        # Emit progress
-                        ev = {
-                            "type": "progress",
-                            "data": {
-                                "step": progress.completed,
-                                "total": max(len(progress.labels), progress.completed),
-                                "label": (
-                                    progress.labels[progress.completed - 1]
-                                    if progress.completed <= len(progress.labels)
-                                    else "处理中..."
-                                ),
-                            },
-                        }
-                        yield _format_sse_event("message", ev)
+                            # Progress event
+                            ev = {
+                                "type": "progress",
+                                "data": {
+                                    "step": progress.completed,
+                                    "total": max(len(progress.labels), progress.completed),
+                                    "label": (
+                                        progress.labels[progress.completed - 1]
+                                        if progress.completed <= len(progress.labels)
+                                        else "处理中..."
+                                    ),
+                                },
+                            }
+                            yield _format_sse_event("message", ev)
 
-                        # Handle tool-specific results
-                        result = _handle_tool_result(tool_name, msg, registry, map_snapshot)
-                        if result:
-                            yield result
-                        # plan_summary is embedded in _handle_tool_result's side-effect;
-                        # we need to emit it separately for submit_plan
-                        if tool_name == "submit_plan":
-                            # Try to parse the tool output
-                            content = msg.content
-                            if isinstance(content, str):
-                                try:
-                                    content = json.loads(content)
-                                except (json.JSONDecodeError, TypeError):
-                                    pass
-                            if isinstance(content, dict) and content.get("status") == "accepted":
-                                summary = _build_plan_summary_event(content)
-                                if summary:
-                                    yield summary
+                            # Handle tool-specific results
+                            result = _handle_tool_result(tool_name, m, registry, map_snapshot)
+                            if result:
+                                yield result
+                            if tool_name == "submit_plan":
+                                content = m.content
+                                if isinstance(content, str):
+                                    try: content = json.loads(content)
+                                    except (json.JSONDecodeError, TypeError): pass
+                                if isinstance(content, dict) and content.get("status") == "accepted":
+                                    summary = _build_plan_summary_event(content)
+                                    if summary:
+                                        yield summary
 
         # ---- Build messages list for DB persistence ----
         messages_for_db = [
