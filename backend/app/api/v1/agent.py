@@ -261,7 +261,7 @@ async def _event_generator(
 
         initial_state = {
             "messages": [{"role": "user", "content": message}],
-            "remaining_steps": 15,
+            "remaining_steps": 40,
         }
 
         registry = POIRegistry()

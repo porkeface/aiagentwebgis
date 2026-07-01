@@ -47,7 +47,7 @@ async def plan_day_route(
     - segments: 每段 {distance_km, duration_min} 明细
 
     Args:
-        pois: 当天的 POI 列表，每个必须有 lng、lat、name。建议 2-10 个。
+        pois: 当天的 POI 列表，每个必须有 lng、lat、name。建议 2-10 个。**性能注意：此工具调用高德外部API较慢，单次POI不宜超过8个**。
         mode: 出行方式 — "driving"（驾车）、"walking"（步行）、"bicycling"（骑行）、"transit"（公交）
              注意：途经点功能仅驾车模式支持。
         optimized_order: 可选的预排序索引列表。传入时跳过内部 TSP 排序，
