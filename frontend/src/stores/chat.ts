@@ -28,6 +28,7 @@ export const useChatStore = defineStore("chat", () => {
 
   // ── Tool status for UI feedback ────────────────────────────────────────────
   const toolStatus = ref<string | null>(null);
+  const progress = ref<{ step: number; total: number; label: string } | null>(null);
 
   // ── Getters ────────────────────────────────────────────────────────────────
   const lastMessage = computed(() =>
@@ -199,6 +200,15 @@ export const useChatStore = defineStore("chat", () => {
           toolStatus.value = content || null;
           break;
         }
+
+        case "progress": {
+          const data = event.data as { step: number; total: number; label: string } | null;
+          if (data) {
+            progress.value = data;
+            toolStatus.value = `${data.label} (${data.step}/${data.total})`;
+          }
+          break;
+        }
       }
     };
 
@@ -324,6 +334,7 @@ export const useChatStore = defineStore("chat", () => {
     historySessions,
     historyLoading,
     toolStatus,
+    progress,
     // getters
     lastMessage,
     messageCount,

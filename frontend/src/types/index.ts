@@ -77,7 +77,8 @@ export type SSEEventType =
   | "route_result"
   | "plan_summary"
   | "text"
-  | "error";
+  | "error"
+  | "progress";
 
 export interface SSEEvent {
   type: SSEEventType;

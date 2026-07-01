@@ -11,6 +11,13 @@ import AuthDialog from './AuthDialog.vue'
 const chatStore = useChatStore()
 const mapStore = useMapStore()
 
+// ── Progress bar ─────────────────────────────────────────────────────────────
+const progressPercent = computed(() => {
+  const p = chatStore.progress
+  if (!p || p.total === 0) return 0
+  return Math.round((p.step / p.total) * 100)
+})
+
 // ── Reactive State ───────────────────────────────────────────────────────────
 const inputText = ref('')
 const messageListRef = ref<HTMLElement | null>(null)
@@ -348,6 +355,14 @@ function handleNewSession(): void {
     <div v-if="chatStore.toolStatus" class="chat-panel__status">
       <span class="status-indicator" />
       <span>{{ chatStore.toolStatus }}</span>
+    </div>
+
+    <!-- ── Progress Bar ─────────────────────────────────────────────────── -->
+    <div v-if="chatStore.progress" class="chat-panel__progress">
+      <div
+        class="chat-panel__progress-fill"
+        :style="{ width: progressPercent + '%' }"
+      />
     </div>
 
     <!-- ── Input Area ─────────────────────────────────────────────────── -->
@@ -1038,6 +1053,17 @@ function handleNewSession(): void {
 @keyframes pulse-status {
   0%, 100% { opacity: 0.35; }
   50% { opacity: 1; }
+}
+
+/* ── Progress bar ─────────────────────────────────────────────────────── */
+.chat-panel__progress {
+  height: 3px;
+  background: var(--color-hairline);
+}
+.chat-panel__progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.3s ease;
 }
 
 .chat-panel__input-field {

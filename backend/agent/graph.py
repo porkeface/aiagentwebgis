@@ -1,27 +1,69 @@
-"""ReAct Agent graph — powered by LangGraph create_react_agent.
+"""Custom ReAct Agent graph — hand-built StateGraph.
 
-Architecture (v2):
-    User Input → create_react_agent(LLM + tools) → stream events → SSE → Frontend
+Replaces ``create_react_agent`` with explicit ``agent_node`` and ``tools_node``
+connected by a conditional edge.  Key improvements over the prebuilt version:
 
-The agent loop is handled entirely by LangGraph.  We configure it with
-ChatTongyi (qwen-plus), our @tool-decorated functions, and a system prompt.
-The API layer maps astream_events to SSE events for the frontend.
+* ``tool_call_count`` only increments on actual tool invocations (LLM chatter is free).
+* Multiple ``plan_day_route`` calls within one turn are dispatched in parallel
+  via ``asyncio.gather`` with per-call timeouts.
+* A ``stream_writer`` preserves per-token text streaming to the frontend.
 """
 
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from typing import Any, Literal
+
+from langchain_core.messages import AIMessage, AIMessageChunk, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_openai import ChatOpenAI
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.prebuilt import create_react_agent
+from langgraph.types import StreamWriter
 
-from agent.state import AgentState
-from agent.tools import AGENT_TOOLS
-from agent.prompts.system import AGENT_SYSTEM_PROMPT
 from agent.checkpointer import get_checkpointer
+from agent.prompts.system import AGENT_SYSTEM_PROMPT
+from agent.state import AgentState
+from agent.tools import AGENT_TOOLS, get_amap
+from app.config import settings
 
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+MAX_TOOL_CALLS = 25
+PLAN_DAY_ROUTE_TIMEOUT_SEC = 30
+PARALLELIZABLE_TOOLS = frozenset({"plan_day_route"})
 
 # ---------------------------------------------------------------------------
 # Module-level cache
 # ---------------------------------------------------------------------------
 
 _compiled_graph: CompiledStateGraph | None = None
+_tool_map: dict[str, Any] = {}
+
+
+def _build_tool_map() -> dict[str, Any]:
+    """Lazily build name→tool lookup from AGENT_TOOLS."""
+    global _tool_map
+    if not _tool_map:
+        _tool_map = {t.name: t for t in AGENT_TOOLS}
+    return _tool_map
+
+
+def _get_model() -> ChatOpenAI:
+    """Return the shared ChatOpenAI instance."""
+    return ChatOpenAI(
+        model="qwen-plus",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        api_key=settings.dashscope_api_key,
+        temperature=0.0,
+        streaming=True,
+    )
 
 
 def reset_compiled_graph() -> None:
@@ -31,17 +73,289 @@ def reset_compiled_graph() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tool-call chunk merger
+# ---------------------------------------------------------------------------
+
+# Adapted from langgraph.prebuilt.tool_node._handle_tool_call_chunks
+def _merge_tool_call_chunks(
+    accumulated: AIMessage,
+    raw_chunks: list[dict[str, Any]] | None,
+) -> None:
+    """Merge incremental tool_call chunks into the accumulated AIMessage.
+
+    ChatOpenAI with streaming emits tool_calls in pieces across multiple
+    chunks (id in one, name in the next, arguments spread across several).
+    This helper accumulates them so the final AIMessage has complete
+    ``tool_calls`` with fully populated ``args``.
+    """
+    if not raw_chunks:
+        return
+
+    if not accumulated.tool_calls:
+        accumulated.tool_calls = []
+
+    for chunk in raw_chunks:
+        idx = chunk.get("index", 0)
+        # Grow tool_calls list if needed
+        while len(accumulated.tool_calls) <= idx:
+            accumulated.tool_calls.append(
+                {"name": "", "args": {}, "id": "", "type": "tool_call"}
+            )
+
+        tc = accumulated.tool_calls[idx]
+        if chunk.get("id"):
+            tc["id"] = chunk["id"]
+        if chunk.get("name"):
+            tc["name"] = chunk["name"]
+
+        args_chunk = chunk.get("args", "")
+        if args_chunk:
+            # args arrive as JSON snippets that must be concatenated
+            tc["args"] = tc.get("args", "") + args_chunk
+
+    # Parse all accumulated args strings → dict
+    for tc in accumulated.tool_calls:
+        if isinstance(tc.get("args"), str) and tc["args"].strip():
+            try:
+                tc["args"] = json.loads(tc["args"])
+            except json.JSONDecodeError:
+                pass  # keep as string if incomplete
+
+
+# ---------------------------------------------------------------------------
+# Fallback helpers
+# ---------------------------------------------------------------------------
+
+
+def _haversine_km(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
+    """Compute straight-line distance in km between two points."""
+    import math
+
+    r = 6371.0
+    d_lng = math.radians(lng2 - lng1)
+    d_lat = math.radians(lat2 - lat1)
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(d_lng / 2) ** 2
+    )
+    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _haversine_fallback(pois: list[dict[str, Any]]) -> dict[str, Any]:
+    """Fallback route estimation when Amap API times out."""
+    if len(pois) <= 1:
+        return {
+            "ordered_pois": [
+                {"name": p.get("name", "?"), "lng": p.get("lng", 0), "lat": p.get("lat", 0)}
+                for p in pois
+            ],
+            "total_distance_km": 0,
+            "total_duration_min": 0,
+            "polyline": "",
+            "segments": [],
+        }
+
+    total = 0.0
+    segments = []
+    for i in range(len(pois) - 1):
+        d = _haversine_km(
+            pois[i].get("lng", 0), pois[i].get("lat", 0),
+            pois[i + 1].get("lng", 0), pois[i + 1].get("lat", 0),
+        )
+        segments.append({
+            "from": pois[i].get("name", "?"),
+            "to": pois[i + 1].get("name", "?"),
+            "distance_km": round(d, 2),
+            "duration_min": round(d * 12),
+        })
+        total += d
+
+    return {
+        "ordered_pois": [
+            {"name": p.get("name", "?"), "lng": p.get("lng", 0), "lat": p.get("lat", 0)}
+            for p in pois
+        ],
+        "total_distance_km": round(total, 2),
+        "total_duration_min": round(total * 12),
+        "polyline": "",
+        "segments": segments,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Graph nodes
+# ---------------------------------------------------------------------------
+
+
+async def agent_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
+    """LLM call node — streams tokens to frontend via stream_writer.
+
+    Returns ``{"messages": [AIMessage]}`` so add_messages appends the full
+    LLM response (including tool_calls) to conversation history.
+    """
+    writer = None
+    try:
+        from langgraph.config import get_stream_writer
+        writer = get_stream_writer()
+    except Exception:
+        pass
+
+    model = _get_model()
+    system_prompt = SystemMessage(content=AGENT_SYSTEM_PROMPT)
+    full_messages = [system_prompt] + state["messages"]
+
+    accumulated = AIMessage(content="")
+    async for chunk in model.astream(full_messages):
+        if isinstance(chunk, AIMessageChunk):
+            # Text content
+            if chunk.content and writer:
+                writer(chunk.content)  # emitted as custom stream event
+                accumulated.content += chunk.content
+
+            # Tool call chunks
+            if chunk.tool_call_chunks:
+                tool_chunks = []
+                for tc in chunk.tool_call_chunks:
+                    tool_chunks.append({
+                        "index": tc.get("index", 0),
+                        "id": tc.get("id"),
+                        "name": tc.get("name"),
+                        "args": tc.get("args", ""),
+                    })
+                _merge_tool_call_chunks(accumulated, tool_chunks)
+
+    return {"messages": [accumulated]}
+
+
+async def tools_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
+    """Dispatch tool calls from the last AIMessage.
+
+    *Tools like plan_day_route* (PARALLELIZABLE_TOOLS) run concurrently
+    via ``asyncio.gather`` with per-call timeouts.
+    *All other tools* run sequentially (they're fast or have side-effects).
+
+    Each result is wrapped in a ``ToolMessage`` so the LLM sees tool output
+    on the next ``agent_node`` invocation.
+    """
+    tool_map = _build_tool_map()
+    messages = state["messages"]
+    last_msg = messages[-1]
+
+    tool_calls = getattr(last_msg, "tool_calls", None) or []
+    if not tool_calls:
+        return {}
+
+    parallel_calls: list[tuple[int, dict[str, Any]]] = []
+    sequential_calls: list[tuple[int, dict[str, Any]]] = []
+
+    for tc in tool_calls:
+        name = tc.get("name", "")
+        if name in PARALLELIZABLE_TOOLS:
+            parallel_calls.append((tc["id"], tc))
+        else:
+            sequential_calls.append((tc["id"], tc))
+
+    tool_messages: list[ToolMessage] = []
+
+    # --- Sequential calls ---------------------------------------------------
+    for call_id, tc in sequential_calls:
+        tool_fn = tool_map.get(tc["name"])
+        if tool_fn is None:
+            tool_messages.append(ToolMessage(
+                content=json.dumps({"error": f"未知工具: {tc['name']}"}),
+                tool_call_id=call_id,
+            ))
+            continue
+
+        try:
+            result = await tool_fn.ainvoke(tc["args"], config)
+            tool_messages.append(_to_tool_message(result, tc["name"], call_id))
+        except Exception as exc:
+            logger.exception("Tool %s failed", tc["name"])
+            tool_messages.append(ToolMessage(
+                content=json.dumps({"error": str(exc)}),
+                tool_call_id=call_id,
+            ))
+
+    # --- Parallel calls (only plan_day_route) -------------------------------
+    async def _call_parallel(call_id: str, tc: dict[str, Any]) -> ToolMessage:
+        tool_fn = tool_map[tc["name"]]
+        try:
+            result = await asyncio.wait_for(
+                tool_fn.ainvoke(tc["args"], config),
+                timeout=PLAN_DAY_ROUTE_TIMEOUT_SEC,
+            )
+            return _to_tool_message(result, tc["name"], call_id)
+        except asyncio.TimeoutError:
+            logger.warning("plan_day_route timed out after %ds, using haversine fallback",
+                           PLAN_DAY_ROUTE_TIMEOUT_SEC)
+            fallback = _haversine_fallback(tc["args"].get("pois", []))
+            return _to_tool_message(fallback, tc["name"], call_id)
+        except Exception as exc:
+            logger.exception("plan_day_route failed")
+            return ToolMessage(
+                content=json.dumps({"error": str(exc)}),
+                tool_call_id=call_id,
+            )
+
+    if parallel_calls:
+        parallel_results = await asyncio.gather(
+            *(_call_parallel(cid, tc) for cid, tc in parallel_calls),
+            return_exceptions=True,
+        )
+        for item in parallel_results:
+            if isinstance(item, ToolMessage):
+                tool_messages.append(item)
+            else:
+                tool_messages.append(ToolMessage(
+                    content=json.dumps({"error": str(item)}),
+                    tool_call_id="unknown",
+                ))
+
+    new_count = state.get("tool_call_count", 0) + len(tool_calls)
+    return {"messages": tool_messages, "tool_call_count": new_count}
+
+
+def _to_tool_message(result: Any, tool_name: str, call_id: str) -> ToolMessage:
+    """Wrap a raw tool return value in a ToolMessage."""
+    if not isinstance(result, str):
+        result = json.dumps(result, ensure_ascii=False, default=str)
+    return ToolMessage(content=result, name=tool_name, tool_call_id=call_id)
+
+
+# ---------------------------------------------------------------------------
+# Conditional routing
+# ---------------------------------------------------------------------------
+
+
+def _should_continue(state: AgentState) -> Literal["tools_node", "__end__"]:
+    """Route after agent_node: tools if we have calls and budget, else end."""
+    messages = state.get("messages", [])
+    if not messages:
+        return END
+
+    last_msg = messages[-1]
+    tool_calls = getattr(last_msg, "tool_calls", None) or []
+    if not tool_calls:
+        return END
+
+    if state.get("tool_call_count", 0) >= MAX_TOOL_CALLS:
+        logger.warning("tool_call_count=%d reached MAX=%d, forcing end",
+                       state.get("tool_call_count"), MAX_TOOL_CALLS)
+        return END
+
+    return "tools_node"
+
+
+# ---------------------------------------------------------------------------
 # Graph builder
 # ---------------------------------------------------------------------------
 
 
-def build_graph(
-    checkpointer: object | None = None,
-) -> CompiledStateGraph:
-    """Build the ReAct travel agent graph.
-
-    ``create_react_agent`` returns an already-compiled ``CompiledStateGraph``
-    so we only need to wire in the checkpointer.
+def build_graph(checkpointer: object | None = None) -> CompiledStateGraph:
+    """Build the custom ReAct travel agent graph.
 
     Args:
         checkpointer: Optional checkpointer override.
@@ -50,7 +364,7 @@ def build_graph(
             - BaseCheckpointSaver: use the supplied instance.
 
     Returns:
-        A compiled LangGraph ready for astream_events / ainvoke.
+        A compiled LangGraph ready for astream / ainvoke.
     """
     global _compiled_graph
 
@@ -58,33 +372,20 @@ def build_graph(
     if use_default and _compiled_graph is not None:
         return _compiled_graph
 
-    # --- Build the LLM -------------------------------------------------------
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import SystemMessage
-    from app.config import settings
+    workflow = StateGraph(AgentState)
 
-    model = ChatOpenAI(
-        model="qwen-plus",
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        api_key=settings.dashscope_api_key,
-        temperature=0.0,
-        streaming=True,
-    )
+    workflow.add_node("agent_node", agent_node)
+    workflow.add_node("tools_node", tools_node)
 
-    # Wrap prompt in a SystemMessage so LangGraph binds it to the model
-    # as a system instruction rather than a user message.
-    system_message = SystemMessage(content=AGENT_SYSTEM_PROMPT)
+    workflow.add_edge(START, "agent_node")
+    workflow.add_edge("tools_node", "agent_node")
+    workflow.add_conditional_edges("agent_node", _should_continue, {
+        "tools_node": "tools_node",
+        "__end__": END,
+    })
 
-    # --- Build the agent -----------------------------------------------------
-    # create_react_agent returns a CompiledStateGraph already.
-    graph = create_react_agent(
-        model=model,
-        tools=AGENT_TOOLS,
-        prompt=system_message,
-        state_schema=AgentState,
-    )
+    graph = workflow.compile()
 
-    # --- Wire checkpointer ---------------------------------------------------
     if use_default:
         cp = get_checkpointer()
         if cp:

@@ -1,24 +1,27 @@
 """Agent Chat SSE API endpoint.
 
 POST /api/v1/agent/chat — Accepts ChatRequest, returns SSE stream of events.
-Powered by LangGraph create_react_agent with astream_events.
+Powered by a custom ReAct StateGraph with per-token text streaming and
+per-tool progress events.
 """
 
 import json
 import logging
 import uuid
-import asyncio
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
+from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent.graph import build_graph
+from agent.progress import ProgressTracker
 from app.database import get_session
 from app.models.user import User
 from app.schemas.agent import ChatRequest
@@ -69,6 +72,7 @@ def _format_error_event(message: str) -> str:
 # POI lookup helpers — resolve poi_id references to full POI dicts
 # ---------------------------------------------------------------------------
 
+
 class POIRegistry:
     """Collects POI data from search tools and resolves poi_id for route_result."""
 
@@ -85,7 +89,6 @@ class POIRegistry:
     def ingest_route_pois(self, ordered_pois: list[dict[str, Any]]) -> None:
         """Ingest POI name/coordinates from plan_day_route ordered_pois output."""
         for p in ordered_pois:
-            # plan_day_route returns name not id — match by name if id missing
             pid = str(p.get("id") or p.get("poi_id", ""))
             if pid and pid not in self._pois:
                 self._pois[pid] = {
@@ -155,11 +158,7 @@ def _build_route_result_event(
     plan_output: dict[str, Any],
     registry: POIRegistry,
 ) -> str | None:
-    """Build a route_result SSE event from submit_plan output.
-
-    Resolves poi_id references to full POI dicts and builds the
-    DailyPlan structure the frontend expects.
-    """
+    """Build a route_result SSE event from submit_plan output."""
     if plan_output.get("status") != "accepted":
         return None
 
@@ -175,7 +174,6 @@ def _build_route_result_event(
             pid = str(ref.get("poi_id", ""))
             full = registry.resolve(pid)
             if full is None:
-                # POI not in registry (user-provided) — use ref fields with fallback
                 ref_lng = ref.get("lng", 0.0)
                 ref_lat = ref.get("lat", 0.0)
                 day_pois.append({
@@ -233,6 +231,67 @@ def _build_plan_summary_event(plan_output: dict[str, Any]) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Tool result handler (extracted from inline on_tool_end logic)
+# ---------------------------------------------------------------------------
+
+
+def _handle_tool_result(
+    tool_name: str,
+    output: Any,
+    registry: POIRegistry,
+    map_snapshot: dict[str, Any],
+) -> str | None:
+    """Handle a single tool result — emit poi_result, ingest coords, etc.
+
+    Returns an SSE event string if one should be yielded, or None.
+    """
+    # Unwrap ToolMessage wrapper
+    if isinstance(output, ToolMessage):
+        content = output.content
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        output = content
+
+    # search_pois / search_nearby → accumulate + emit poi_result
+    if tool_name in ("search_pois", "search_nearby"):
+        if isinstance(output, list):
+            registry.ingest(output)
+        event_str = _build_poi_result_event(registry)
+        if event_str:
+            parsed = json.loads(event_str.split("\n")[1].replace("data: ", "", 1))
+            map_snapshot["pois"] = parsed.get("data", {}).get("pois", [])
+        return event_str
+
+    # plan_day_route → cache coordinates
+    if tool_name == "plan_day_route":
+        if isinstance(output, dict):
+            ordered = output.get("ordered_pois", [])
+            if ordered:
+                registry.ingest_route_pois(ordered)
+        return None
+
+    # submit_plan → route_result + plan_summary
+    if tool_name == "submit_plan":
+        if isinstance(output, dict) and output.get("status") == "accepted":
+            route = _build_route_result_event(output, registry)
+            if route:
+                parsed = json.loads(route.split("\n")[1].replace("data: ", "", 1))
+                map_snapshot["routes"] = parsed.get("data", {}).get("daily_plans", [])
+            summary = _build_plan_summary_event(output)
+            if summary:
+                p = json.loads(summary.split("\n")[1].replace("data: ", "", 1))
+                map_snapshot["plan_summary"] = p.get("data", {})
+            # Return route event (caller yields it); summary is yielded separately
+            return route
+        return None
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Event generator
 # ---------------------------------------------------------------------------
 
@@ -242,133 +301,111 @@ async def _event_generator(
     message: str,
     user_id: int | None = None,
 ) -> AsyncGenerator[str, None]:
-    """Generate SSE events from the ReAct agent's astream_events.
+    """Generate SSE events from the custom ReAct StateGraph.
 
-    When ``user_id`` is provided, the conversation + map snapshot are
-    persisted to ``chat_sessions`` so the user can revisit past chats.
-
-    Args:
-        session_id: Unique session identifier (used as thread_id).
-        message: User message content.
-        user_id: Authenticated user id (None for anonymous).
+    Uses ``astream(stream_mode=["custom", "messages"])``:
+    - ``custom``: per-token text chunks from agent_node's stream_writer
+    - ``messages``: AIMessage (LLM output + tool_calls) and ToolMessage (tool results)
     """
     map_snapshot: dict[str, Any] = {"pois": [], "routes": [], "plan_summary": None}
     messages_for_db: list[dict[str, Any]] | None = None
+    # stream_writer is passed via config["configurable"] to agent_node
+    custom_writer: Any | None = None
 
     try:
         graph = build_graph()
-        config = {"configurable": {"thread_id": session_id}}
+        config: dict[str, Any] = {
+            "configurable": {
+                "thread_id": session_id,
+                # stream_writer placeholder — populated below
+                "stream_writer": None,
+            },
+        }
 
         initial_state = {
             "messages": [{"role": "user", "content": message}],
-            "remaining_steps": 40,
+            "tool_call_count": 0,
         }
 
         registry = POIRegistry()
+        progress = ProgressTracker()
         accumulated_text = ""
+        pending_tool_calls: list[tuple[str, dict[str, Any]]] = []
 
-        async for event in graph.astream_events(initial_state, config=config, version="v2"):
-            kind = event.get("event", "")
-            name = event.get("name", "")
-            data = event.get("data", {})
-
-            # ---- LLM starts thinking ----
-            if kind == "on_chat_model_start":
-                accumulated_text = ""
+        async for mode, chunk in graph.astream(
+            initial_state, config, stream_mode=["custom", "messages"],
+        ):
+            # ---- Custom events (per-token text streaming) ----
+            if mode == "custom":
+                token: str = chunk  # type: ignore[annotation-type-check]
+                accumulated_text += token
                 yield _format_sse_event("message", {
-                    "type": "thinking",
-                    "data": {"content": "AI 正在思考..."},
+                    "type": "text",
+                    "data": {"content": token},
                 })
 
-            # ---- LLM token stream ----
-            if kind == "on_chat_model_stream":
-                chunk = data.get("chunk")
-                if chunk and hasattr(chunk, "content") and chunk.content:
-                    accumulated_text += chunk.content
-                    # Stream each chunk immediately for real-time display
-                    yield _format_sse_event("message", {
-                        "type": "text",
-                        "data": {"content": chunk.content},
-                    })
+            # ---- Message events (AIMessage / ToolMessage entering state) ----
+            elif mode == "messages":
+                msg, metadata = chunk  # type: ignore[annotation-type-check]
+                node = metadata.get("langgraph_node", "")
 
-            # ---- LLM response complete (also streamed: drops duplicate) ----
-            elif kind == "on_chat_model_end":
-                # ChatOpenAI with streaming=True may still emit on_chat_model_end
-                # with the full concatenated content. We only use it as a
-                # fallback when streaming delivered nothing.
-                output = data.get("output")
-                if output and hasattr(output, "content") and output.content:
-                    if not accumulated_text:
-                        accumulated_text = output.content
-                        yield _format_sse_event("message", {
-                            "type": "text",
-                            "data": {"content": output.content},
-                        })
+                if node == "agent_node":
+                    # AIMessage: LLM output. May have tool_calls.
+                    if isinstance(msg, AIMessage):
+                        tc_list = getattr(msg, "tool_calls", None) or []
+                        if tc_list:
+                            # First text token of the turn → thinking event
+                            yield _format_sse_event("message", {
+                                "type": "thinking",
+                                "data": {"content": "AI 正在思考..."},
+                            })
+                            for tc in tc_list:
+                                label = progress.add_tool(tc["name"], tc["args"])
+                                yield _format_sse_event("message", {
+                                    "type": "tool_calling",
+                                    "data": {"content": label},
+                                })
+                                pending_tool_calls.append((tc["name"], tc["args"]))
 
-            # ---- Tool starts ----
-            elif kind == "on_tool_start":
-                tool_name = name or ""
-                tool_input = data.get("input", {})
+                elif node == "tools_node":
+                    # ToolMessage: a tool's result
+                    if isinstance(msg, ToolMessage):
+                        tool_name = getattr(msg, "name", "")
+                        progress.mark_complete()
 
-                label_map = {
-                    "search_pois": f"正在搜索 {tool_input.get('city', '')} 的 {tool_input.get('category', '')}...",
-                    "search_nearby": "正在搜索周边...",
-                    "plan_route": "正在查询路线距离...",
-                    "optimize_route": "正在优化访问顺序...",
-                    "score_pois": "正在评估 POI...",
-                    "submit_plan": "正在验证行程...",
-                }
-                label = label_map.get(tool_name, f"正在 {tool_name}...")
+                        # Emit progress
+                        ev = {
+                            "type": "progress",
+                            "data": {
+                                "step": progress.completed,
+                                "total": max(len(progress.labels), progress.completed),
+                                "label": (
+                                    progress.labels[progress.completed - 1]
+                                    if progress.completed <= len(progress.labels)
+                                    else "处理中..."
+                                ),
+                            },
+                        }
+                        yield _format_sse_event("message", ev)
 
-                yield _format_sse_event("message", {
-                    "type": "tool_calling",
-                    "data": {"content": label},
-                })
-
-            # ---- Tool ends ----
-            elif kind == "on_tool_end":
-                tool_name = name or ""
-                output = data.get("output")
-
-                # Unwrap LangChain ToolMessage wrapper (streaming=True path)
-                if hasattr(output, "content") and hasattr(output, "tool_call_id"):
-                    output = output.content
-                    if isinstance(output, str):
-                        try:
-                            output = json.loads(output)
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-
-                # search_pois / search_nearby → accumulate POIs + emit poi_result
-                if tool_name in ("search_pois", "search_nearby"):
-                    if isinstance(output, list):
-                        registry.ingest(output)
-                    event_str = _build_poi_result_event(registry)
-                    if event_str:
-                        yield event_str
-                        parsed = json.loads(event_str.split("\n")[1].replace("data: ", "", 1))
-                        map_snapshot["pois"] = parsed.get("data", {}).get("pois", [])
-
-                # plan_day_route → cache coordinates for submit_plan resolution
-                elif tool_name == "plan_day_route":
-                    if isinstance(output, dict):
-                        ordered = output.get("ordered_pois", [])
-                        if ordered:
-                            registry.ingest_route_pois(ordered)
-
-                # submit_plan → emit route_result + plan_summary
-                elif tool_name == "submit_plan":
-                    if isinstance(output, dict) and output.get("status") == "accepted":
-                        route = _build_route_result_event(output, registry)
-                        if route:
-                            yield route
-                            p = json.loads(route.split("\n")[1].replace("data: ", "", 1))
-                            map_snapshot["routes"] = p.get("data", {}).get("daily_plans", [])
-                        summary = _build_plan_summary_event(output)
-                        if summary:
-                            yield summary
-                            p = json.loads(summary.split("\n")[1].replace("data: ", "", 1))
-                            map_snapshot["plan_summary"] = p.get("data", {})
+                        # Handle tool-specific results
+                        result = _handle_tool_result(tool_name, msg, registry, map_snapshot)
+                        if result:
+                            yield result
+                        # plan_summary is embedded in _handle_tool_result's side-effect;
+                        # we need to emit it separately for submit_plan
+                        if tool_name == "submit_plan":
+                            # Try to parse the tool output
+                            content = msg.content
+                            if isinstance(content, str):
+                                try:
+                                    content = json.loads(content)
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+                            if isinstance(content, dict) and content.get("status") == "accepted":
+                                summary = _build_plan_summary_event(content)
+                                if summary:
+                                    yield summary
 
         # ---- Build messages list for DB persistence ----
         messages_for_db = [
@@ -419,7 +456,6 @@ async def _event_generator(
 
 def _now_iso() -> str:
     """Return current UTC timestamp as ISO string."""
-    from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -441,7 +477,7 @@ async def chat(
 
     The ReAct agent autonomously decides whether to search POIs, plan
     routes, or just chat.  SSE events (text, poi_result, route_result,
-    plan_summary, tool_calling, error, done) are streamed in real time.
+    plan_summary, tool_calling, progress, error, done) are streamed in real time.
     """
     session_id = request.session_id or str(uuid.uuid4())
 

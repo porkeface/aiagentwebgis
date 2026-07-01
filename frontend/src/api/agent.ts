@@ -132,6 +132,7 @@ function parseSSEEvent(raw: string): SSEEvent | null {
     "plan_summary",
     "text",
     "error",
+    "progress",
   ];
 
   if (!validTypes.includes(type)) {
