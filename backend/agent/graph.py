@@ -56,14 +56,15 @@ def _build_tool_map() -> dict[str, Any]:
 
 
 def _get_model() -> ChatOpenAI:
-    """Return the shared ChatOpenAI instance."""
-    return ChatOpenAI(
+    """Return the shared ChatOpenAI instance with tools bound."""
+    model = ChatOpenAI(
         model="qwen-plus",
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         api_key=settings.dashscope_api_key,
         temperature=0.0,
         streaming=True,
     )
+    return model.bind_tools(AGENT_TOOLS)
 
 
 def reset_compiled_graph() -> None:
@@ -111,7 +112,10 @@ def _merge_tool_call_chunks(
         args_chunk = chunk.get("args", "")
         if args_chunk:
             # args arrive as JSON snippets that must be concatenated
-            tc["args"] = tc.get("args", "") + args_chunk
+            existing = tc.get("args")
+            if isinstance(existing, dict):
+                existing = ""
+            tc["args"] = existing + args_chunk
 
     # Parse all accumulated args strings → dict
     for tc in accumulated.tool_calls:

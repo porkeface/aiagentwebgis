@@ -1,7 +1,7 @@
 """plan_day_route tool — single-day optimal driving route via Amap waypoints.
 
-Combines nearest-neighbor TSP ordering with Amap's multi-waypoint driving
-direction API to produce a real-world optimized route for a day's POIs.
+Combines TSP ordering (from optimize_route) with Amap's multi-waypoint
+driving direction API to produce a real-world optimized route for a day's POIs.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def _order_pois_tsp(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Order a small list of POIs (≤10) via nearest-neighbor TSP.
+    """Order a small list of POIs via the shared TSP solver.
 
     Returns a new list in optimal visit order.  Pure function — no I/O.
     """
@@ -44,27 +44,25 @@ async def plan_day_route(
     - total_distance_km: 总驾车距离
     - total_duration_min: 总驾车时间
     - polyline: 完整路线坐标串（用于前端渲染）
-    - segments: 每段 {distance_km, duration_min} 明细
+    - segments: 每段 {distance_km, duration_min, polyline, mode} 明细
+    - mode: 出行方式
 
     Args:
-        pois: 当天的 POI 列表，每个必须有 lng、lat、name。建议 2-10 个。**性能注意：此工具调用高德外部API较慢，单次POI不宜超过8个**。
-        mode: 出行方式 — "driving"（驾车）、"walking"（步行）、"bicycling"（骑行）、"transit"（公交）
-             注意：途经点功能仅驾车模式支持。
+        pois: 当天的 POI 列表，每个必须有 lng、lat、name。建议 2-10 个。
+        mode: 出行方式 — "driving"（驾车）、"walking"（步行）、
+              "bicycling"（骑行）、"transit"（公交）。
+              注意：途经点功能仅驾车模式支持。
         optimized_order: 可选的预排序索引列表。传入时跳过内部 TSP 排序，
-             直接按给定顺序调用高德 API。用于全局排序后的子集路线规划。
+              直接按给定顺序调用高德 API。用于全局排序后的子集路线规划。
     """
     from agent.tools import get_amap
 
     if not pois:
         return {
-            "ordered_pois": [],
-            "total_distance_km": 0,
-            "total_duration_min": 0,
-            "polyline": "",
-            "segments": [],
+            "ordered_pois": [], "total_distance_km": 0, "total_duration_min": 0,
+            "polyline": "", "segments": [], "mode": mode,
         }
 
-    # Use pre-computed order when provided (e.g. from global TSP + time-budget split)
     if optimized_order is not None:
         ordered = [pois[i] for i in optimized_order if 0 <= i < len(pois)]
     else:
@@ -73,13 +71,9 @@ async def plan_day_route(
     if len(ordered) == 1:
         p = ordered[0]
         return {
-            "ordered_pois": [
-                {"id": p.get("id"), "name": p.get("name"), "lng": p.get("lng"), "lat": p.get("lat")}
-            ],
-            "total_distance_km": 0,
-            "total_duration_min": 0,
-            "polyline": "",
-            "segments": [],
+            "ordered_pois": [{"id": p.get("id"), "name": p.get("name"), "lng": p.get("lng"), "lat": p.get("lat")}],
+            "total_distance_km": 0, "total_duration_min": 0,
+            "polyline": "", "segments": [], "mode": mode,
         }
 
     amap = get_amap()
@@ -92,11 +86,9 @@ async def plan_day_route(
 
     try:
         result = await amap.plan_route_with_waypoints(
-            origin=origin,
-            destination=destination,
-            waypoints=waypoints,
-            mode=mode,
+            origin=origin, destination=destination, waypoints=waypoints, mode=mode,
         )
+        result["mode"] = mode
         return {
             "ordered_pois": [
                 {"id": p.get("id"), "name": p.get("name"), "lng": p.get("lng"), "lat": p.get("lat")}
@@ -112,14 +104,14 @@ async def plan_day_route(
         segments: list[dict[str, Any]] = []
         for i in range(len(ordered) - 1):
             d = _haversine_km(ordered[i], ordered[i + 1])
-            segments.append(
-                {
-                    "from": ordered[i].get("name", "?"),
-                    "to": ordered[i + 1].get("name", "?"),
-                    "distance_km": round(d, 2),
-                    "duration_min": round(d * 12),
-                }
-            )
+            segments.append({
+                "from": ordered[i].get("name", "?"),
+                "to": ordered[i + 1].get("name", "?"),
+                "distance_km": round(d, 2),
+                "duration_min": round(d * 3),
+                "polyline": "",
+                "mode": mode,
+            })
             total += d
         return {
             "ordered_pois": [
@@ -127,7 +119,8 @@ async def plan_day_route(
                 for p in ordered
             ],
             "total_distance_km": round(total, 2),
-            "total_duration_min": round(total * 12),
+            "total_duration_min": round(total * 3),
             "polyline": "",
             "segments": segments,
+            "mode": mode,
         }

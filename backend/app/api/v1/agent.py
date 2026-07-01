@@ -69,6 +69,20 @@ def _format_error_event(message: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Route data cache — plan_day_route → submit_plan polyline bridge
+# ---------------------------------------------------------------------------
+
+# Key: fingerprint of ordered POI ids. Value: route data from plan_day_route.
+_route_cache: dict[str, dict[str, Any]] = {}
+
+
+def _poi_fingerprint(ordered_pois: list[dict[str, Any]]) -> str:
+    """Stable string key from a list of ordered POIs."""
+    ids = [str(p.get("id") or p.get("name", "?")) for p in ordered_pois]
+    return "|".join(ids)
+
+
+# ---------------------------------------------------------------------------
 # POI lookup helpers — resolve poi_id references to full POI dicts
 # ---------------------------------------------------------------------------
 
@@ -204,12 +218,20 @@ def _build_route_result_event(
                 "meal_type": ref.get("meal_type"),
             })
 
+        # Look up cached route data (polyline, segments, mode) from plan_day_route
+        day_poi_ids = [str(p.get("id") or p.get("name", "")) for p in day_pois]
+        fp = "|".join(day_poi_ids)
+        cached = _route_cache.get(fp, {})
+
         formatted_plans.append({
             "day": day_plan.get("day", 1),
             "day_title": day_plan.get("day_theme", f"第{day_plan.get('day', 1)}天"),
             "pois": day_pois,
+            "total_distance_km": cached.get("total_distance_km") or day_plan.get("total_distance_km", 0),
             "total_duration_min": day_plan.get("total_duration_min", 0),
             "total_transit_min": day_plan.get("total_transit_min", 0),
+            "polyline": cached.get("polyline", ""),
+            "segments": cached.get("segments", []),
         })
 
     return _format_sse_event("message", {
@@ -265,12 +287,23 @@ def _handle_tool_result(
             map_snapshot["pois"] = parsed.get("data", {}).get("pois", [])
         return event_str
 
-    # plan_day_route → cache coordinates
+    # plan_day_route → cache coordinates + route data for polyline injection
     if tool_name == "plan_day_route":
         if isinstance(output, dict):
             ordered = output.get("ordered_pois", [])
             if ordered:
                 registry.ingest_route_pois(ordered)
+            poly = output.get("polyline")
+            segs = output.get("segments")
+            rmode = output.get("mode")
+            total_d = output.get("total_distance_km")
+            total_t = output.get("total_duration_min")
+            if poly or segs:
+                fp = _poi_fingerprint(ordered)
+                _route_cache[fp] = {
+                    "polyline": poly, "segments": segs, "mode": rmode,
+                    "total_distance_km": total_d, "total_duration_min": total_t,
+                }
         return None
 
     # submit_plan → route_result + plan_summary

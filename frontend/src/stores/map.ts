@@ -14,6 +14,8 @@ export interface RouteSegment {
   to_poi_id?: number | string;
   distance_km: number;
   duration_min?: number;
+  polyline?: string;   // Amap polyline for this segment ("lng,lat;lng,lat;...")
+  mode?: string;        // "driving" | "walking" | "bicycling" | "transit"
 }
 
 /** A single POI stop inside a daily plan */
@@ -46,6 +48,7 @@ export interface DailyPlan {
   total_duration_min?: number;
   total_transit_min?: number;
   segments?: RouteSegment[];
+  polyline?: string;   // Full-day Amap polyline (for map rendering)
 }
 
 /**

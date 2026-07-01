@@ -6,6 +6,26 @@ import { DAY_COLORS } from "@/utils/constants";
 // ── Store ────────────────────────────────────────────────────────────────────
 const mapStore = useMapStore();
 
+// ── Transport mode helpers ───────────────────────────────────────────────────
+function modeIcon(mode: string): string {
+  const icons: Record<string, string> = {
+    driving: '🚗',
+    walking: '🚶',
+    bicycling: '🚴',
+    transit: '🚌',
+  }
+  return icons[mode] || ''
+}
+function modeLabel(mode: string): string {
+  const labels: Record<string, string> = {
+    driving: '驾车',
+    walking: '步行',
+    bicycling: '骑行',
+    transit: '公交',
+  }
+  return labels[mode] || mode
+}
+
 // ── Derived data ─────────────────────────────────────────────────────────────
 const hasRoutes = computed(() => mapStore.routes.length > 0);
 
@@ -268,6 +288,10 @@ function formatTimeSlot(slot: string | undefined): string {
                                 class="itin__stop-next"
                             >
                                 <span class="itin__stop-next-rule"></span>
+                                <span v-if="plan.segments[idx]?.mode" class="itin__chip itin__chip--mode">
+                                    {{ modeIcon(plan.segments[idx]?.mode ?? '') }}
+                                    {{ modeLabel(plan.segments[idx]?.mode ?? '') }}
+                                </span>
                                 <span class="numeric">{{
                                     formatDistance(
                                         plan.segments[idx]?.distance_km ?? 0,
@@ -689,6 +713,13 @@ function formatTimeSlot(slot: string | undefined): string {
     color: var(--color-sage);
     background: rgba(126, 148, 112, 0.08);
     border-color: rgba(126, 148, 112, 0.25);
+}
+
+.itin__chip--mode {
+    color: var(--color-accent);
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.2);
+    font-size: 0.7rem;
 }
 
 .itin__stop-next {
