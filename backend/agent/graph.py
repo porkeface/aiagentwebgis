@@ -194,16 +194,18 @@ def _haversine_fallback(pois: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 async def agent_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
-    """LLM call node — streams tokens per-chunk for responsive UI.
+    """LLM call node — returns AIMessage with optional tool_calls.
 
-    Uses ``model.astream()`` so the API layer can intercept per-token
-    chunks.  The API layer uses ``astream_events`` on the *compiled graph*
-    to receive ``on_chat_model_stream`` events for SSE text streaming.
+    Uses ``model.astream()`` so LangGraph emits ``on_chat_model_stream``
+    events that the API layer translates to per-token SSE text.
     """
     model = _get_model()
     system_prompt = SystemMessage(content=AGENT_SYSTEM_PROMPT)
     full_messages = [system_prompt] + state["messages"]
 
+    # Build tool_call chunks from streaming, then extract final AIMessage.
+    # We cannot use model.ainvoke() because that won't produce
+    # on_chat_model_stream events for the API layer.
     accumulated = AIMessage(content="")
     async for chunk in model.astream(full_messages):
         if isinstance(chunk, AIMessageChunk):
@@ -219,6 +221,16 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> dict[str, Any
                         "args": tc.get("args", ""),
                     })
                 _merge_tool_call_chunks(accumulated, tool_chunks)
+
+    # Parse accumulated JSON args strings to dicts for validate function
+    if hasattr(accumulated, "tool_calls") and accumulated.tool_calls:
+        for tc in accumulated.tool_calls:
+            args = tc.get("args")
+            if isinstance(args, str) and args.strip():
+                try:
+                    tc["args"] = json.loads(args)
+                except json.JSONDecodeError:
+                    pass  # keep as string
 
     return {"messages": [accumulated]}
 
