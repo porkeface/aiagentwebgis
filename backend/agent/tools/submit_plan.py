@@ -8,6 +8,7 @@ intercepts the tool output and emits the ``route_result`` SSE event.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from langchain_core.tools import tool
@@ -145,36 +146,10 @@ async def submit_plan(
               "total_transit_min": 35
             }
     """
-    # ── Auto-route each day via Amap waypoint API ──────────────────────
-    from agent.tools import get_amap
-    from agent.tools.tsp_solver import solve_tsp
-
-    enriched_plans: list[dict[str, Any]] = []
-    for dp in daily_plans:
-        pois = dp.get("pois", [])
-        if len(pois) >= 2:
-            # TSP sort + Amap waypoint route
-            try:
-                order, _ = solve_tsp(pois)
-                ordered = [pois[i] for i in order]
-                amap = get_amap()
-                origin = (ordered[0]["lng"], ordered[0]["lat"])
-                destination = (ordered[-1]["lng"], ordered[-1]["lat"])
-                wps = None
-                if len(ordered) > 2:
-                    wps = [(p["lng"], p["lat"]) for p in ordered[1:-1]]
-                route = await amap.plan_route_with_waypoints(
-                    origin=origin, destination=destination, waypoints=wps, mode="driving",
-                )
-                dp["pois"] = ordered
-                dp["total_distance_km"] = route.get("distance_km", 0)
-                dp["total_transit_min"] = route.get("duration_min", 0)
-                dp["polyline"] = route.get("polyline", "")
-                dp["segments"] = route.get("segments", [])
-            except Exception:
-                # fallback: keep original order + haversine segments
-                _fallback_segments(pois, dp)
-        enriched_plans.append(dp)
+    # ── Auto-route each day in parallel via Amap waypoint API ────────────
+    _sorted = sorted(daily_plans, key=lambda d: d.get("day", 0))
+    _tasks = [_route_one_day(dp) for dp in _sorted]
+    enriched_plans = list(await asyncio.gather(*_tasks))
 
     plan = {"city": city, "days": days, "daily_plans": enriched_plans}
     issues = _validate_plan(plan)
@@ -219,3 +194,38 @@ def _fallback_segments(pois: list[dict], dp: dict) -> None:
     dp["total_transit_min"] = round(total_d * 3)
     dp["polyline"] = ""
     dp["segments"] = segs
+
+
+async def _route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
+    """TSP sort a single day's POIs and fetch Amap waypoint route.
+
+    Runs per-day so ``asyncio.gather`` can fan out across all days.
+    """
+    from agent.tools import get_amap
+    from agent.tools.tsp_solver import solve_tsp
+
+    pois = dp.get("pois", [])
+    if len(pois) >= 2:
+        try:
+            order, _ = solve_tsp(pois)
+            ordered = [pois[i] for i in order]
+        except Exception:
+            ordered = pois
+        dp["pois"] = ordered
+        try:
+            amap = get_amap()
+            origin = (ordered[0]["lng"], ordered[0]["lat"])
+            destination = (ordered[-1]["lng"], ordered[-1]["lat"])
+            wps = None
+            if len(ordered) > 2:
+                wps = [(p["lng"], p["lat"]) for p in ordered[1:-1]]
+            route = await amap.plan_route_with_waypoints(
+                origin=origin, destination=destination, waypoints=wps, mode="driving",
+            )
+            dp["total_distance_km"] = route.get("distance_km", 0)
+            dp["total_transit_min"] = route.get("duration_min", 0)
+            dp["polyline"] = route.get("polyline", "")
+            dp["segments"] = route.get("segments", [])
+        except Exception:
+            _fallback_segments(ordered, dp)
+    return dp

@@ -135,8 +135,7 @@ function onClose(): void {
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-card-hover);
   overflow: hidden;
-  /* Must exceed leaflet's popup-pane (z-index 700) so this card always
-     wins against any open popup or marker tooltip. */
+  /* Must exceed map overlay z-index so the card always wins against popups. */
   z-index: 1000;
   color: var(--color-text-primary);
   font-family: var(--font-sans);

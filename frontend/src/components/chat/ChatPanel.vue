@@ -2,14 +2,12 @@
 import { ref, watch, nextTick, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useChatStore } from '@/stores/chat'
-import { useMapStore } from '@/stores/map'
 import { getToken, getUsername, logout, setAuthChangeListener } from '@/api/auth'
 import MessageBubble from './MessageBubble.vue'
 import AuthDialog from './AuthDialog.vue'
 
 // ── Store ────────────────────────────────────────────────────────────────────
 const chatStore = useChatStore()
-const mapStore = useMapStore()
 
 // ── Progress bar ─────────────────────────────────────────────────────────────
 const progressPercent = computed(() => {

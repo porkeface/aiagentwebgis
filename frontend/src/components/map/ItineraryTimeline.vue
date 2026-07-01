@@ -27,8 +27,6 @@ function modeLabel(mode: string): string {
 }
 
 // ── Derived data ─────────────────────────────────────────────────────────────
-const hasRoutes = computed(() => mapStore.routes.length > 0);
-
 const dailyPlans = computed<DailyPlan[]>(() =>
     (mapStore.routes as DailyPlan[]).map((r) => ({
         day: r.day ?? 0,

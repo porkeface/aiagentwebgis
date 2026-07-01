@@ -251,7 +251,7 @@ a {
 }
 
 /* =============================================================================
-   Map markers (Leaflet renders outside Vue's scoped DOM — global styles)
+   Map markers (rendered outside Vue's scoped DOM — global styles)
    ========================================================================== */
 
 .poi-marker-icon {
@@ -299,19 +299,7 @@ a {
   display: block;
 }
 
-.poi-popup .leaflet-popup-content-wrapper {
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-hairline-strong);
-  box-shadow: var(--shadow-lg);
-}
-
-.poi-popup .leaflet-popup-tip {
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-hairline-strong);
-}
-
+/* POI popup — now Amap InfoWindow */
 .poi-popup .poi-popup-title {
   font-family: var(--font-serif);
   font-size: var(--text-subtitle);

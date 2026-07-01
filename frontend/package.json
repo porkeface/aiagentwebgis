@@ -10,16 +10,15 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@vue-leaflet/vue-leaflet": "^0.10.1",
+    "@amap/amap-jsapi-loader": "^1.0.1",
     "element-plus": "^2.14.2",
-    "leaflet": "^1.9.4",
     "pinia": "^3.0.4",
     "vue": "^3.5.38",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@amap/amap-jsapi-types": "^0.0.15",
     "@playwright/test": "^1.61.1",
-    "@types/leaflet": "^1.9.21",
     "@types/node": "^24.13.2",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/tsconfig": "^0.9.1",

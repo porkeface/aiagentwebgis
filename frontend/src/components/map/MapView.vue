@@ -1,21 +1,18 @@
 <script setup lang="ts">
 import { watch, computed, shallowRef, ref, onMounted, onUnmounted } from 'vue'
-import { LMap, LTileLayer } from '@vue-leaflet/vue-leaflet'
-import { latLngBounds } from 'leaflet'
 import type { POI } from '@/types'
 import { useMapStore, type DailyPlan } from '@/stores/map'
-import PoiMarker from './PoiMarker.vue'
-import RouteLayer from './RouteLayer.vue'
+import { RouteLayerRenderer } from './RouteLayer.js'
 import ItineraryTimeline from './ItineraryTimeline.vue'
 import POIDetailCard from './POIDetailCard.vue'
 import TripListDrawer from './TripListDrawer.vue'
 import PoiSelectPanel from './PoiSelectPanel.vue'
 import { useTripStore } from '@/stores/trip'
+import { loadAMap } from '@/utils/amap'
 
 // ── Constants ───────────────────────────────────────────────────────────────
-const DEFAULT_CENTER: [number, number] = [39.9, 116.4]
+const DEFAULT_CENTER: [number, number] = [116.4, 39.9]  // [lng, lat] — Amap order
 const DEFAULT_ZOOM = 12
-const FLY_DURATION = 1.2
 
 // ── Store ────────────────────────────────────────────────────────────────────
 const mapStore = useMapStore()
@@ -27,7 +24,9 @@ const pois = computed(() => mapStore.pois)
 const routes = computed(() => mapStore.routes)
 const hasRoutes = computed(() => routes.value.length > 0)
 const selectedPOI = computed(() => mapStore.selectedPOI)
-const leafletMap = shallowRef<L.Map | null>(null)
+const amapMap = shallowRef<AMap.Map | null>(null)
+const amapSDK = shallowRef<typeof AMap | null>(null)
+const routeRenderer = shallowRef<RouteLayerRenderer | null>(null)
 
 const selectedPOIContext = computed(() => {
   if (!selectedPOI.value) return null
@@ -36,15 +35,15 @@ const selectedPOIContext = computed(() => {
 
 const mapCenter = computed<[number, number]>(() => {
   if (mapStore.center) {
-    return [mapStore.center.lat, mapStore.center.lng]
+    return [mapStore.center.lng, mapStore.center.lat]
   }
   return DEFAULT_CENTER
 })
 
 const mapZoom = computed(() => mapStore.zoom ?? DEFAULT_ZOOM)
 
-// ── Tile Layer ───────────────────────────────────────────────────────────────
-const isDark = ref(true) // Default to dark — matches the editorial canvas
+// ── Dark Mode ────────────────────────────────────────────────────────────────
+const isDark = ref(true)
 const darkModeOverride = ref<boolean | null>(null)
 
 const effectiveDark = computed(() => {
@@ -79,39 +78,103 @@ onUnmounted(() => {
   }
 })
 
-const tileUrl = computed(() => {
-  return 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}'
+// ── Amap initialisation ─────────────────────────────────────────────────────
+onMounted(async () => {
+  const AMap_sdk = await loadAMap()
+  amapSDK.value = AMap_sdk
+
+  const map = new AMap_sdk.Map('amap-container', {
+    center: mapCenter.value,
+    zoom: mapZoom.value,
+    viewMode: '2D',
+    resizeEnable: true,
+    showBuildingBlock: false,
+    dragEnable: true,
+    zoomEnable: true,
+    doubleClickZoom: true,
+    scrollWheel: true,
+    animateEnable: false,
+  })
+
+  amapMap.value = map
+  ;(document.getElementById('amap-container') as any)._amap = map
+  const renderer = new RouteLayerRenderer(AMap_sdk)
+  renderer.attach(map)
+  routeRenderer.value = renderer
+
+  // Render initial data if already present
+  if (routes.value.length > 0) {
+    renderer.setRoutes(routes.value as DailyPlan[], mapStore.activeDay)
+    fitBoundsFromRoutes(AMap_sdk, routes.value as DailyPlan[])
+  }
+  if (pois.value.length > 0 && routes.value.length === 0) {
+    renderer.setPois(pois.value)
+    fitBoundsFromPOIs(AMap_sdk, pois.value)
+  }
 })
-const tileSubdomains = '1234'
 
-function onMapReady(map: L.Map): void {
-  leafletMap.value = map
-  flyToBounds(map, pois.value)
-}
+onUnmounted(() => {
+  if (routeRenderer.value) {
+    routeRenderer.value.destroy()
+    routeRenderer.value = null
+  }
+  if (amapMap.value) {
+    ;(amapMap.value as AMap.Map & { destroy?: () => void }).destroy?.()
+    amapMap.value = null
+  }
+})
 
+// ── Watch: routes change → re-render ────────────────────────────────────────
 watch(
-  [pois, routes],
-  ([newPois, newRoutes]) => {
-    const map = leafletMap.value
-    if (!map) return
+  () => routes.value,
+  (newRoutes) => {
+    const map = amapMap.value
+    const renderer = routeRenderer.value
+    const AMap = amapSDK.value
+    if (!map || !renderer || !AMap) return
+    renderer.setRoutes(newRoutes as DailyPlan[], mapStore.activeDay)
     if (newRoutes.length > 0) {
-      flyToBoundsFromRoutes(newRoutes as DailyPlan[])
-    } else if (newPois.length > 0) {
-      flyToBounds(map, newPois)
+      fitBoundsFromRoutes(AMap, newRoutes as DailyPlan[])
     }
   },
 )
 
 watch(
-  () => mapStore.selectedPOI,
-  (poi) => {
-    const map = leafletMap.value
-    if (!map || !poi) return
-    map.flyTo([poi.lat, poi.lng], 15, { duration: FLY_DURATION })
+  () => mapStore.activeDay,
+  (day) => {
+    routeRenderer.value?.setActiveDay(day)
   },
 )
 
-function flyToBoundsFromRoutes(routeList: DailyPlan[]): void {
+// ── Watch: POIs change → render immediately ─────────────────────────────
+watch(
+  () => pois.value,
+  (newPois) => {
+    const map = amapMap.value
+    const AMap = amapSDK.value
+    const renderer = routeRenderer.value
+    if (!map || !AMap) return
+    if (newPois.length > 0 && routes.value.length === 0) {
+      renderer?.setPois(newPois)
+      fitBoundsFromPOIs(AMap, newPois)
+    }
+  },
+)
+
+// ── Watch: selected POI → fly to ────────────────────────────────────────────
+watch(
+  () => mapStore.selectedPOI,
+  (poi) => {
+    const map = amapMap.value
+    if (!map || !poi) return
+    map.setZoomAndCenter(15, [poi.lng, poi.lat])
+  },
+)
+
+// ── Fit bounds ──────────────────────────────────────────────────────────────
+function fitBoundsFromRoutes(AMap_sdk: typeof AMap, routeList: DailyPlan[]): void {
+  const map = amapMap.value
+  if (!map) return
   const allPois = routeList
     .filter((r) => (r.pois?.length ?? 0) >= 2)
     .flatMap((r) => r.pois ?? [])
@@ -119,37 +182,33 @@ function flyToBoundsFromRoutes(routeList: DailyPlan[]): void {
 
   const lngs = allPois.map((p) => p.lng)
   const lats = allPois.map((p) => p.lat)
-  const bounds = latLngBounds(
-    [Math.min(...lats), Math.min(...lngs)],
-    [Math.max(...lats), Math.max(...lngs)],
+  map.setBounds(
+    new AMap_sdk.Bounds(
+      [Math.min(...lngs), Math.min(...lats)],
+      [Math.max(...lngs), Math.max(...lats)],
+    ),
+    false,
+    [80, 80, 80, 80],
   )
-  leafletMap.value?.flyToBounds(bounds, {
-    padding: [80, 80],
-    maxZoom: 15,
-    duration: FLY_DURATION,
-  })
 }
 
-function flyToBounds(map: L.Map, poiList: POI[]): void {
+function fitBoundsFromPOIs(AMap_sdk: typeof AMap, poiList: POI[]): void {
+  const map = amapMap.value
+  if (!map) return
   if (poiList.length === 0) return
-
   const lngs = poiList.map((p) => p.lng)
   const lats = poiList.map((p) => p.lat)
-  const bounds = latLngBounds(
-    [Math.min(...lats), Math.min(...lngs)],
-    [Math.max(...lats), Math.max(...lngs)],
+  map.setBounds(
+    new AMap_sdk.Bounds(
+      [Math.min(...lngs), Math.min(...lats)],
+      [Math.max(...lngs), Math.max(...lats)],
+    ),
+    false,
+    [80, 80, 80, 80],
   )
-  map.flyToBounds(bounds, {
-    padding: [80, 80],
-    maxZoom: 15,
-    duration: FLY_DURATION,
-  })
 }
 
-function onPoiSelect(poi: POI): void {
-  mapStore.selectPOI(poi)
-}
-
+// ── UI event handlers ───────────────────────────────────────────────────────
 function onPOICardClose(): void {
   mapStore.clearSelection()
 }
@@ -158,7 +217,7 @@ function onTimelineClick(): void {
   if (mapStore.timelineOpen) {
     mapStore.timelineOpen = false
   } else {
-    activePanel.value = null            // mutually exclusive
+    activePanel.value = null
     mapStore.timelineOpen = true
   }
 }
@@ -167,7 +226,7 @@ function onTripsClick(): void {
   if (activePanel.value === 'trips') {
     activePanel.value = null
   } else {
-    mapStore.timelineOpen = false        // mutually exclusive
+    mapStore.timelineOpen = false
     mapStore.setPoiPanelOpen(false)
     activePanel.value = 'trips'
   }
@@ -182,32 +241,9 @@ function onPOIsClick(): void {
 
 <template>
   <div class="map-container" :class="{ 'dark-mode': effectiveDark }">
-    <l-map
-      :center="mapCenter"
-      :zoom="mapZoom"
-      @ready="onMapReady"
-    >
-      <l-tile-layer
-        :url="tileUrl"
-        :subdomains="tileSubdomains"
-        layer-type="base"
-        name="高德地图"
-        attribution="&copy; 高德地图"
-      />
+    <div id="amap-container" class="amap-container"></div>
 
-      <RouteLayer />
-
-      <PoiMarker
-        v-if="!hasRoutes"
-        v-for="(poi, index) in pois"
-        :key="poi.id"
-        :poi="poi"
-        :index="index"
-        @select="onPoiSelect"
-      />
-    </l-map>
-
-    <!-- Top-left: segmented nav bar — 兴趣点 + 行程规划 + 历史规划 -->
+    <!-- Top-left: segmented nav bar -->
     <div class="map-navbar">
       <button
         v-if="pois.length > 0 && !hasRoutes"
@@ -250,7 +286,7 @@ function onPOIsClick(): void {
       </button>
     </div>
 
-    <!-- 历史规划 panel — below the navbar -->
+    <!-- 历史规划 panel -->
     <div v-if="activePanel === 'trips'" class="map-panel">
       <TripListDrawer @close="activePanel = null" />
     </div>
@@ -260,7 +296,7 @@ function onPOIsClick(): void {
       <PoiSelectPanel @close="mapStore.setPoiPanelOpen(false)" />
     </div>
 
-    <!-- 查看行程 panel — ItineraryTimeline in the same .map-panel slot -->
+    <!-- 行程 timeline panel -->
     <div v-if="hasRoutes && mapStore.timelineOpen" class="map-panel">
       <ItineraryTimeline />
     </div>
@@ -322,29 +358,16 @@ function onPOIsClick(): void {
   height: 100%;
   min-height: 300px;
   position: relative;
-  background: var(--color-bg-deep);
-  /* Establish a stacking context so children's z-index (POI card,
-     timeline, etc.) is honored against the leaflet tile-pane which
-     uses z-index 200 internally. */
   isolation: isolate;
   z-index: 0;
 }
 
-/* Dark-mode tile treatment: invert + warm duotone */
-.map-container.dark-mode :deep(.leaflet-tile) {
-  filter: invert(1) hue-rotate(190deg) brightness(0.78) contrast(0.92) saturate(0.85);
-}
-.map-container.dark-mode :deep(.leaflet-container) {
-  background: var(--color-bg-deep);
-}
-.map-container:not(.dark-mode) :deep(.leaflet-tile) {
-  filter: saturate(0.6) contrast(0.92) brightness(0.96);
-}
-.map-container:not(.dark-mode) :deep(.leaflet-container) {
-  background: #f1ebe1;
+.amap-container {
+  width: 100%;
+  height: 100%;
 }
 
-/* Day filter — editorial numbered tabs */
+/* Day filter */
 .day-filter {
   position: absolute;
   top: var(--space-xl);
@@ -425,7 +448,7 @@ function onPOIsClick(): void {
   box-shadow: var(--shadow-md);
 }
 
-/* Dark/light mode toggle — top-right */
+/* Dark/light mode toggle */
 .map-dark-toggle {
   position: absolute;
   top: var(--space-xl);
@@ -452,48 +475,27 @@ function onPOIsClick(): void {
   background: rgba(243, 236, 225, 0.08);
 }
 
-/* ── Floating POI button ───────────────────────────────────────────────── */
-.map-poi-btn {
+/* Panel */
+.map-panel {
   position: absolute;
-  bottom: var(--space-xl);
+  top: calc(var(--space-xl) + 56px);
   left: var(--space-xl);
-  z-index: 1150;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
-  background: rgba(20, 24, 31, 0.78);
-  backdrop-filter: blur(16px) saturate(1.4);
-  -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  border: 1px solid var(--color-hairline-strong);
-  border-radius: var(--radius-pill);
-  color: var(--color-text-secondary);
-  font-family: var(--font-sans);
-  font-size: var(--text-meta);
-  font-weight: 500;
-  letter-spacing: var(--letter-spacing-wide);
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out-expo);
-  box-shadow: var(--shadow-md);
+  z-index: 1100;
+  width: 360px;
+  max-height: calc(100vh - var(--space-xl) - 56px - var(--space-xl));
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: var(--radius-xl);
 }
-.map-poi-btn:hover {
-  color: var(--color-text-primary);
-  background: rgba(243, 236, 225, 0.08);
-  border-color: var(--color-accent);
-}
-.map-poi-btn__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
-  background: var(--color-accent);
-  color: #fff;
-  font-size: 0.625rem;
-  font-weight: 600;
+
+.map-panel :deep(.itin),
+.map-panel :deep(.trip-drawer),
+.map-panel :deep(.poi-select-panel) {
+  display: flex;
+  flex-direction: column;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
 }
 
 .map-navbar__btn {
@@ -543,33 +545,7 @@ function onPOIsClick(): void {
   border: 2px solid var(--color-bg-elevated);
 }
 
-/* Panel — sits below the navbar, inside the map container */
-.map-panel {
-  position: absolute;
-  top: calc(var(--space-xl) + 56px);
-  left: var(--space-xl);
-  z-index: 1100;
-  width: 360px;
-  max-height: calc(100vh - var(--space-xl) - 56px - var(--space-xl));
-  overflow-y: auto;
-  overflow-x: hidden;
-  border-radius: var(--radius-xl);
-}
-
-/* Fill the panel — both ItineraryTimeline and TripListDrawer */
-.map-panel :deep(.itin),
-.map-panel :deep(.trip-drawer),
-.map-panel :deep(.poi-select-panel) {
-  display: flex;
-  flex-direction: column;
-  width: 100% !important;
-  max-width: 100% !important;
-  height: 100% !important;
-}
-
-/* Atmospheric vignette + grain — must sit BELOW every UI overlay
-   (brand mark, day filter, POI card, timeline) so the overlays remain
-   fully visible. pointer-events: none keeps it click-through. */
+/* Vignette */
 .map-vignette {
   position: absolute;
   inset: 0;
@@ -579,43 +555,28 @@ function onPOIsClick(): void {
     radial-gradient(ellipse at center, transparent 50%, rgba(14, 17, 22, 0.4) 100%),
     linear-gradient(180deg, rgba(14, 17, 22, 0.35) 0%, transparent 20%, transparent 80%, rgba(14, 17, 22, 0.5) 100%);
 }
-
 .dark-mode .map-vignette {
   background:
     radial-gradient(ellipse at center, transparent 40%, rgba(14, 17, 22, 0.6) 100%),
     linear-gradient(180deg, rgba(14, 17, 22, 0.5) 0%, transparent 20%, transparent 75%, rgba(14, 17, 22, 0.65) 100%);
 }
-
 .map-container:not(.dark-mode) .map-vignette {
   background:
     radial-gradient(ellipse at center, transparent 55%, rgba(241, 235, 225, 0.35) 100%),
     linear-gradient(180deg, rgba(241, 235, 225, 0.3) 0%, transparent 25%, transparent 75%, rgba(241, 235, 225, 0.4) 100%);
 }
-
 .map-vignette::after {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.4 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   opacity: 0.05;
   mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.4 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-:deep(.leaflet-control-zoom) {
-  display: none;
-}
-
-:deep(.leaflet-control-attribution) {
-  background: transparent !important;
-  color: var(--color-text-muted) !important;
-  font-family: var(--font-sans);
-  font-size: var(--text-micro) !important;
-  letter-spacing: var(--letter-spacing-wide);
-  text-transform: uppercase;
-  padding: 0 !important;
-}
-
-:deep(.leaflet-control-attribution a) {
-  color: var(--color-text-secondary) !important;
+/* Hide Amap attribution logo — our brand mark replaces it */
+:deep(.amap-logo),
+:deep(.amap-copyright) {
+  display: none !important;
 }
 </style>
