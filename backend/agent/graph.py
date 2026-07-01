@@ -194,20 +194,43 @@ def _haversine_fallback(pois: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 async def agent_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
-    """LLM call node — returns AIMessage with optional tool_calls.
+    """LLM call node — streams tokens for responsive UI.
 
-    Uses ``model.ainvoke()`` (non-streaming) so the LLM returns in one
-    shot.  The API layer uses ``astream_events`` which provides
-    ``on_chat_model_stream`` events from the model's streaming output,
-    even with ainvoke when the model is configured with ``streaming=True``.
-
+    Uses model.astream() so LangGraph emits on_chat_model_stream events
+    for per-token SSE text streaming.  LangChain 1.0 does not export
+    chunk_messages_to_message, so we manually merge tool_call chunks.
     """
     model = _get_model()
     system_prompt = SystemMessage(content=AGENT_SYSTEM_PROMPT)
     full_messages = [system_prompt] + state["messages"]
 
-    response = await model.ainvoke(full_messages)
-    return {"messages": [response]}
+    accumulated = AIMessage(content="")
+    async for chunk in model.astream(full_messages):
+        if isinstance(chunk, AIMessageChunk):
+            if chunk.content:
+                accumulated.content += chunk.content
+            if chunk.tool_call_chunks:
+                tool_chunks = []
+                for tc in chunk.tool_call_chunks:
+                    tool_chunks.append({
+                        "index": tc.get("index", 0),
+                        "id": tc.get("id"),
+                        "name": tc.get("name"),
+                        "args": tc.get("args", ""),
+                    })
+                _merge_tool_call_chunks(accumulated, tool_chunks)
+
+    # Merge accumulated JSON args strings to dicts BEFORE returning
+    if hasattr(accumulated, "tool_calls") and accumulated.tool_calls:
+        for tc in accumulated.tool_calls:
+            args = tc.get("args")
+            if isinstance(args, str) and args.strip():
+                try:
+                    tc["args"] = json.loads(args)
+                except json.JSONDecodeError:
+                    pass  # keep malformed args as string, tool will fail cleanly
+
+    return {"messages": [accumulated]}
 
 
 async def tools_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
