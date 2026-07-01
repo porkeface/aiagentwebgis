@@ -21,6 +21,13 @@ class ProgressTracker:
 
     def add_tool(self, name: str, tool_input: dict[str, Any]) -> str:
         """Record a pending tool invocation. Returns the label."""
+        # tool_input may be a JSON string from the model's tool_call chunk
+        if isinstance(tool_input, str):
+            try:
+                import json
+                tool_input = json.loads(tool_input)
+            except (json.JSONDecodeError, TypeError):
+                tool_input = {}
         label = _tool_label(name, tool_input)
         self.labels.append(label)
         return label

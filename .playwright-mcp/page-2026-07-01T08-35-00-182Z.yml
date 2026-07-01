@@ -1,0 +1,48 @@
+- generic [ref=f11e3]:
+  - generic [ref=f11e5]:
+    - generic [ref=f11e7]:
+      - link "Leaflet" [ref=f11e8] [cursor=pointer]:
+        - /url: https://leafletjs.com
+        - img [ref=f11e9]
+        - text: Leaflet
+      - text: "| © 高德地图"
+    - button "历史规划" [ref=f11e14] [cursor=pointer]:
+      - img [ref=f11e15]
+      - generic [ref=f11e18]: 历史规划
+    - button "切换深色" [ref=f11e19] [cursor=pointer]:
+      - img [ref=f11e20]
+  - complementary [ref=f11e22]:
+    - generic [ref=f11e23]:
+      - generic [ref=f11e24]:
+        - generic [ref=f11e25]:
+          - generic [ref=f11e28]: ATELIER · 2026
+          - heading "Travel Atlas" [level=1] [ref=f11e29]:
+            - text: Travel
+            - emphasis [ref=f11e30]: Atlas
+          - paragraph [ref=f11e31]: A concierge for the curious traveler
+        - generic [ref=f11e32]:
+          - button "对话历史" [ref=f11e33] [cursor=pointer]:
+            - img [ref=f11e34]
+          - button "登录" [ref=f11e37] [cursor=pointer]
+      - generic [ref=f11e38]:
+        - article [ref=f11e63]:
+          - generic [ref=f11e65]: YOU
+          - generic [ref=f11e67]:
+            - paragraph [ref=f11e68]: 帮我规划莆田一日游
+            - generic [ref=f11e70]: 16:34
+        - article [ref=f11e71]:
+          - generic [ref=f11e74]: CONCIERGE
+          - generic [ref=f11e75]:
+            - paragraph [ref=f11e76]: "好的！我们来为你规划莆田一日游 🌟 莆田是福建历史文化名城，有“海滨邹鲁”之称，融合了妈祖文化、南少林武术、古建遗存与滨海风光。我们将围绕「文化+自然+美食」综合体验，精选高分、交通便利、时间合理的 POI，打造充实而有温度的一日行程。 --- ### ✅ Step A：搜索 & 打分（莆田核心 POI） 我将搜索以下类别，覆盖文化地标、自然景观与本地美食： - 风景名胜（如九鲤湖、九龙谷、湄洲岛相关但需注意：湄洲岛需轮渡，单日往返较紧张，暂不优先） - 寺庙/古迹（南少林寺、梅峰寺、三清殿） - 博物馆（莆田市博物馆） - 小吃快餐"
+            - generic [ref=f11e78]: 16:34
+        - article [ref=f11e79]:
+          - generic [ref=f11e82]: CONCIERGE
+          - generic [ref=f11e83]:
+            - generic [ref=f11e88]: Composing your itinerary…
+            - generic [ref=f11e90]: 16:35
+      - generic [ref=f11e56]:
+        - generic [ref=f11e57]:
+          - textbox "Begin a new journey…" [disabled] [ref=f11e58]
+          - button "发送" [disabled] [ref=f11e59]:
+            - img [ref=f11e60]
+        - generic [ref=f11e62]: Press Enter to send · Shift+Enter for newline

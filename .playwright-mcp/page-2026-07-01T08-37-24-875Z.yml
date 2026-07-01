@@ -1,0 +1,175 @@
+- generic [ref=f12e3]:
+  - generic [ref=f12e5]:
+    - generic [ref=f12e6]:
+      - generic:
+        - generic:
+          - button "1" [ref=f12e91] [cursor=pointer]:
+            - generic [ref=f12e93]: "1"
+          - button "2" [ref=f12e94] [cursor=pointer]:
+            - generic [ref=f12e96]: "2"
+          - button "3" [ref=f12e97] [cursor=pointer]:
+            - generic [ref=f12e99]: "3"
+          - button "4" [ref=f12e100] [cursor=pointer]:
+            - generic [ref=f12e102]: "4"
+          - button "5" [ref=f12e103] [cursor=pointer]:
+            - generic [ref=f12e105]: "5"
+          - button "6" [ref=f12e106] [cursor=pointer]:
+            - generic [ref=f12e108]: "6"
+          - button "7" [ref=f12e109] [cursor=pointer]:
+            - generic [ref=f12e111]: "7"
+          - button "8" [ref=f12e112] [cursor=pointer]:
+            - generic [ref=f12e114]: "8"
+          - button "9" [ref=f12e115] [cursor=pointer]:
+            - generic [ref=f12e117]: "9"
+          - button "10" [ref=f12e118] [cursor=pointer]:
+            - generic [ref=f12e120]: "10"
+          - button "11" [ref=f12e121] [cursor=pointer]:
+            - generic [ref=f12e123]: "11"
+          - button "12" [ref=f12e124] [cursor=pointer]:
+            - generic [ref=f12e126]: "12"
+          - button "13" [ref=f12e127] [cursor=pointer]:
+            - generic [ref=f12e129]: "13"
+          - button "14" [ref=f12e130] [cursor=pointer]:
+            - generic [ref=f12e132]: "14"
+          - button "15" [ref=f12e133] [cursor=pointer]:
+            - generic [ref=f12e135]: "15"
+          - button "16" [ref=f12e136] [cursor=pointer]:
+            - generic [ref=f12e138]: "16"
+          - button "17" [ref=f12e139] [cursor=pointer]:
+            - generic [ref=f12e141]: "17"
+          - button "18" [ref=f12e142] [cursor=pointer]:
+            - generic [ref=f12e144]: "18"
+          - button "19" [ref=f12e145] [cursor=pointer]:
+            - generic [ref=f12e147]: "19"
+          - button "20" [ref=f12e148] [cursor=pointer]:
+            - generic [ref=f12e150]: "20"
+          - button "21" [ref=f12e151] [cursor=pointer]:
+            - generic [ref=f12e153]: "21"
+          - button "22" [ref=f12e154] [cursor=pointer]:
+            - generic [ref=f12e156]: "22"
+          - button "23" [ref=f12e157] [cursor=pointer]:
+            - generic [ref=f12e159]: "23"
+          - button "24" [ref=f12e160] [cursor=pointer]:
+            - generic [ref=f12e162]: "24"
+          - button "25" [ref=f12e163] [cursor=pointer]:
+            - generic [ref=f12e165]: "25"
+          - button "26" [ref=f12e166] [cursor=pointer]:
+            - generic [ref=f12e168]: "26"
+          - button "27" [ref=f12e169] [cursor=pointer]:
+            - generic [ref=f12e171]: "27"
+          - button "28" [ref=f12e172] [cursor=pointer]:
+            - generic [ref=f12e174]: "28"
+          - button "29" [ref=f12e175] [cursor=pointer]:
+            - generic [ref=f12e177]: "29"
+          - button "30" [ref=f12e178] [cursor=pointer]:
+            - generic [ref=f12e180]: "30"
+          - button "31" [ref=f12e181] [cursor=pointer]:
+            - generic [ref=f12e183]: "31"
+          - button "32" [ref=f12e184] [cursor=pointer]:
+            - generic [ref=f12e186]: "32"
+          - button "33" [ref=f12e187] [cursor=pointer]:
+            - generic [ref=f12e189]: "33"
+          - button "34" [ref=f12e190] [cursor=pointer]:
+            - generic [ref=f12e192]: "34"
+          - button "35" [ref=f12e193] [cursor=pointer]:
+            - generic [ref=f12e195]: "35"
+          - button "36" [ref=f12e196] [cursor=pointer]:
+            - generic [ref=f12e198]: "36"
+          - button "37" [ref=f12e199] [cursor=pointer]:
+            - generic [ref=f12e201]: "37"
+          - button "38" [ref=f12e202] [cursor=pointer]:
+            - generic [ref=f12e204]: "38"
+          - button "39" [ref=f12e205] [cursor=pointer]:
+            - generic [ref=f12e207]: "39"
+          - button "40" [ref=f12e208] [cursor=pointer]:
+            - generic [ref=f12e210]: "40"
+          - button "41" [ref=f12e211] [cursor=pointer]:
+            - generic [ref=f12e213]: "41"
+          - button "42" [ref=f12e214] [cursor=pointer]:
+            - generic [ref=f12e216]: "42"
+          - button "43" [ref=f12e217] [cursor=pointer]:
+            - generic [ref=f12e219]: "43"
+          - button "44" [ref=f12e220] [cursor=pointer]:
+            - generic [ref=f12e222]: "44"
+          - button "45" [ref=f12e223] [cursor=pointer]:
+            - generic [ref=f12e225]: "45"
+          - button "46" [ref=f12e226] [cursor=pointer]:
+            - generic [ref=f12e228]: "46"
+          - button "47" [ref=f12e229] [cursor=pointer]:
+            - generic [ref=f12e231]: "47"
+          - button "48" [ref=f12e232] [cursor=pointer]:
+            - generic [ref=f12e234]: "48"
+          - button "49" [ref=f12e235] [cursor=pointer]:
+            - generic [ref=f12e237]: "49"
+          - button "50" [ref=f12e238] [cursor=pointer]:
+            - generic [ref=f12e240]: "50"
+          - button "51" [ref=f12e241] [cursor=pointer]:
+            - generic [ref=f12e243]: "51"
+          - button "52" [ref=f12e244] [cursor=pointer]:
+            - generic [ref=f12e246]: "52"
+          - button "53" [ref=f12e247] [cursor=pointer]:
+            - generic [ref=f12e249]: "53"
+          - button "54" [ref=f12e250] [cursor=pointer]:
+            - generic [ref=f12e252]: "54"
+          - button "55" [ref=f12e253] [cursor=pointer]:
+            - generic [ref=f12e255]: "55"
+          - button "56" [ref=f12e256] [cursor=pointer]:
+            - generic [ref=f12e258]: "56"
+          - button "57" [ref=f12e259] [cursor=pointer]:
+            - generic [ref=f12e261]: "57"
+          - button "58" [ref=f12e262] [cursor=pointer]:
+            - generic [ref=f12e264]: "58"
+          - button "59" [ref=f12e265] [cursor=pointer]:
+            - generic [ref=f12e267]: "59"
+      - generic [ref=f12e7]:
+        - link "Leaflet" [ref=f12e8] [cursor=pointer]:
+          - /url: https://leafletjs.com
+          - img [ref=f12e9]
+          - text: Leaflet
+        - text: "| © 高德地图"
+    - generic [ref=f12e13]:
+      - button "兴趣点 59" [ref=f12e268] [cursor=pointer]:
+        - img [ref=f12e269]
+        - generic [ref=f12e272]: 兴趣点
+        - generic [ref=f12e273]: "59"
+      - button "历史规划" [ref=f12e14] [cursor=pointer]:
+        - img [ref=f12e15]
+        - generic [ref=f12e18]: 历史规划
+    - button "切换深色" [ref=f12e19] [cursor=pointer]:
+      - img [ref=f12e20]
+  - complementary [ref=f12e22]:
+    - generic [ref=f12e23]:
+      - generic [ref=f12e24]:
+        - generic [ref=f12e25]:
+          - generic [ref=f12e28]: ATELIER · 2026
+          - heading "Travel Atlas" [level=1] [ref=f12e29]:
+            - text: Travel
+            - emphasis [ref=f12e30]: Atlas
+          - paragraph [ref=f12e31]: A concierge for the curious traveler
+        - generic [ref=f12e32]:
+          - button "对话历史" [ref=f12e33] [cursor=pointer]:
+            - img [ref=f12e34]
+          - button "登录" [ref=f12e37] [cursor=pointer]
+      - generic [ref=f12e38]:
+        - article [ref=f12e63]:
+          - generic [ref=f12e65]: YOU
+          - generic [ref=f12e67]:
+            - paragraph [ref=f12e68]: 帮我规划莆田一日游
+            - generic [ref=f12e70]: 16:36
+        - article [ref=f12e71]:
+          - generic [ref=f12e74]: CONCIERGE
+          - generic [ref=f12e75]:
+            - paragraph [ref=f12e76]: "好的！我们来为你规划一趟**莆田一日游**——这座闽中古城既有深厚妈祖文化、唐宋古建遗存，又有山水灵秀的自然风光。我将基于真实 POI 数据，为你精选高分、有代表性、交通合理的景点，打造充实而有温度的一日行程。 首先，我将搜索莆田市内最具代表性的几类 POI： ✅ 风景名胜（如九鲤湖、九龙谷） ✅ 文化地标（如湄洲妈祖祖庙、南少林寺） ✅ 历史建筑/古迹（如三清殿、梅峰寺） ✅ 特色美食（莆田卤面、兴化粉、海蛎煎等本地风味） 然后综合打分、优化路线、严格按时间预算（8:00–22:00，含用餐缓冲）安排，确保不赶路、有深度。 现在开始第一步：搜索候选 POI。 感谢耐心等待！已成功获取莆田市多类优质 POI 数据，包括： - ✅ **核心文化地标**：湄洲岛国家旅游度假区、妈祖文化园、天妃故里遗址公园、湄洲妈祖祖庙（中军殿）、南山广化寺 - ✅ **自然与人文融合**：九鲤湖、九龙谷、绶溪公园、凤凰山公园、白塘湖公园 - ✅ **地道美食代表**：多家高分“莆田卤面”店（含妈祖庙店、新涵街店等）、非遗炝肉、莆田小吃集结号、木兰居饭店 接下来进入关键步骤： 🔹 **打分筛选**：综合「文化深度」「景观独特性」「交通可达性」「游客口碑」，从上述 POI 中精选最具代表性、时间效率最优的 5–6 个候选点； 🔹 **地理分区 & 路线优化**：莆田市区与湄洲岛相距约 40km（车程约 1h），必须优先判断是否安排上岛——一日游需权衡深度 vs 广度。经初步判断：**湄洲岛是莆田灵魂所在，不可缺席；但需紧凑安排，聚焦核心妈祖文化动线**。 现在我将调用 `score_pois` 对全部候选 POI 进行加权打分（偏好设为 [\"文化\", \"信仰\", \"自然\"]），并提取高分项用于后续路线规划。"
+            - generic [ref=f12e78]: 16:36
+        - article [ref=f12e79]:
+          - generic [ref=f12e82]: CONCIERGE
+          - generic [ref=f12e83]:
+            - generic [ref=f12e88]: Composing your itinerary…
+            - generic [ref=f12e90]: 16:37
+      - generic [ref=f12e276]: 正在 ...
+      - generic [ref=f12e56]:
+        - generic [ref=f12e57]:
+          - textbox "Begin a new journey…" [disabled] [ref=f12e58]
+          - button "发送" [disabled] [ref=f12e59]:
+            - img [ref=f12e60]
+        - generic [ref=f12e62]: Press Enter to send · Shift+Enter for newline

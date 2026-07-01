@@ -1,0 +1,514 @@
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic:
+        - generic:
+          - button "1" [ref=e114] [cursor=pointer]:
+            - generic [ref=e116]: "1"
+          - button "2" [ref=e117] [cursor=pointer]:
+            - generic [ref=e119]: "2"
+          - button "3" [ref=e120] [cursor=pointer]:
+            - generic [ref=e122]: "3"
+          - button "4" [ref=e123] [cursor=pointer]:
+            - generic [ref=e125]: "4"
+          - button "5" [ref=e126] [cursor=pointer]:
+            - generic [ref=e128]: "5"
+          - button "6" [ref=e129] [cursor=pointer]:
+            - generic [ref=e131]: "6"
+          - button "7" [ref=e132] [cursor=pointer]:
+            - generic [ref=e134]: "7"
+          - button "8" [ref=e135] [cursor=pointer]:
+            - generic [ref=e137]: "8"
+          - button "9" [ref=e138] [cursor=pointer]:
+            - generic [ref=e140]: "9"
+          - button "10" [ref=e141] [cursor=pointer]:
+            - generic [ref=e143]: "10"
+          - button "11" [ref=e144] [cursor=pointer]:
+            - generic [ref=e146]: "11"
+          - button "12" [ref=e147] [cursor=pointer]:
+            - generic [ref=e149]: "12"
+          - button "13" [ref=e150] [cursor=pointer]:
+            - generic [ref=e152]: "13"
+          - button "14" [ref=e153] [cursor=pointer]:
+            - generic [ref=e155]: "14"
+          - button "15" [ref=e156] [cursor=pointer]:
+            - generic [ref=e158]: "15"
+          - button "16" [ref=e159] [cursor=pointer]:
+            - generic [ref=e161]: "16"
+          - button "17" [ref=e162] [cursor=pointer]:
+            - generic [ref=e164]: "17"
+          - button "18" [ref=e165] [cursor=pointer]:
+            - generic [ref=e167]: "18"
+          - button "19" [ref=e168] [cursor=pointer]:
+            - generic [ref=e170]: "19"
+          - button "20" [ref=e171] [cursor=pointer]:
+            - generic [ref=e173]: "20"
+          - button "21" [ref=e174] [cursor=pointer]:
+            - generic [ref=e176]: "21"
+          - button "22" [ref=e177] [cursor=pointer]:
+            - generic [ref=e179]: "22"
+          - button "23" [ref=e180] [cursor=pointer]:
+            - generic [ref=e182]: "23"
+          - button "24" [ref=e183] [cursor=pointer]:
+            - generic [ref=e185]: "24"
+          - button "25" [ref=e186] [cursor=pointer]:
+            - generic [ref=e188]: "25"
+          - button "26" [ref=e189] [cursor=pointer]:
+            - generic [ref=e191]: "26"
+          - button "27" [ref=e192] [cursor=pointer]:
+            - generic [ref=e194]: "27"
+          - button "28" [ref=e195] [cursor=pointer]:
+            - generic [ref=e197]: "28"
+          - button "29" [ref=e198] [cursor=pointer]:
+            - generic [ref=e200]: "29"
+          - button "30" [ref=e201] [cursor=pointer]:
+            - generic [ref=e203]: "30"
+          - button "31" [ref=e204] [cursor=pointer]:
+            - generic [ref=e206]: "31"
+          - button "32" [ref=e207] [cursor=pointer]:
+            - generic [ref=e209]: "32"
+          - button "33" [ref=e210] [cursor=pointer]:
+            - generic [ref=e212]: "33"
+          - button "34" [ref=e213] [cursor=pointer]:
+            - generic [ref=e215]: "34"
+          - button "35" [ref=e216] [cursor=pointer]:
+            - generic [ref=e218]: "35"
+          - button "36" [ref=e219] [cursor=pointer]:
+            - generic [ref=e221]: "36"
+          - button "37" [ref=e222] [cursor=pointer]:
+            - generic [ref=e224]: "37"
+          - button "38" [ref=e225] [cursor=pointer]:
+            - generic [ref=e227]: "38"
+          - button "39" [ref=e228] [cursor=pointer]:
+            - generic [ref=e230]: "39"
+          - button "40" [ref=e231] [cursor=pointer]:
+            - generic [ref=e233]: "40"
+          - button "41" [ref=e234] [cursor=pointer]:
+            - generic [ref=e236]: "41"
+          - button "42" [ref=e237] [cursor=pointer]:
+            - generic [ref=e239]: "42"
+          - button "43" [ref=e240] [cursor=pointer]:
+            - generic [ref=e242]: "43"
+          - button "44" [ref=e243] [cursor=pointer]:
+            - generic [ref=e245]: "44"
+          - button "45" [ref=e246] [cursor=pointer]:
+            - generic [ref=e248]: "45"
+          - button "46" [ref=e249] [cursor=pointer]:
+            - generic [ref=e251]: "46"
+          - button "47" [ref=e252] [cursor=pointer]:
+            - generic [ref=e254]: "47"
+          - button "48" [ref=e255] [cursor=pointer]:
+            - generic [ref=e257]: "48"
+          - button "49" [ref=e258] [cursor=pointer]:
+            - generic [ref=e260]: "49"
+          - button "50" [ref=e261] [cursor=pointer]:
+            - generic [ref=e263]: "50"
+          - button "51" [ref=e264] [cursor=pointer]:
+            - generic [ref=e266]: "51"
+          - button "52" [ref=e267] [cursor=pointer]:
+            - generic [ref=e269]: "52"
+          - button "53" [ref=e270] [cursor=pointer]:
+            - generic [ref=e272]: "53"
+          - button "54" [ref=e273] [cursor=pointer]:
+            - generic [ref=e275]: "54"
+          - button "55" [ref=e276] [cursor=pointer]:
+            - generic [ref=e278]: "55"
+      - generic [ref=e7]:
+        - link "Leaflet" [ref=e8] [cursor=pointer]:
+          - /url: https://leafletjs.com
+          - img [ref=e9]
+          - text: Leaflet
+        - text: "| © 高德地图"
+    - button "历史规划" [ref=e14] [cursor=pointer]:
+      - img [ref=e15]
+      - generic [ref=e18]: 历史规划
+    - generic:
+      - generic:
+        - generic [ref=e293]:
+          - heading "兴趣点 (55)" [level=3] [ref=e294]
+          - button "全选" [ref=e295] [cursor=pointer]
+          - button [ref=e296] [cursor=pointer]:
+            - img [ref=e297]
+        - generic [ref=e299]:
+          - generic [ref=e303] [cursor=pointer]:
+            - paragraph [ref=e304]: 南普陀寺
+            - generic [ref=e305]:
+              - generic [ref=e306]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e307]: ★ 4.8
+            - paragraph [ref=e308]: 思明南路515号
+          - generic [ref=e312] [cursor=pointer]:
+            - paragraph [ref=e313]: 清水宫
+            - generic [ref=e314]:
+              - generic [ref=e315]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e316]: ★ 4.7
+            - paragraph [ref=e317]: 殿前街道殿前三路6122-8号
+          - generic [ref=e321] [cursor=pointer]:
+            - paragraph [ref=e322]: 青礁慈济祖宫
+            - generic [ref=e323]:
+              - generic [ref=e324]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e325]: ★ 4.6
+            - paragraph [ref=e326]: 海沧台商投资区马青路青礁村岐山东鸣岭
+          - generic [ref=e330] [cursor=pointer]:
+            - paragraph [ref=e331]: 围里社
+            - generic [ref=e332]:
+              - generic [ref=e333]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e334]: ★ 3.8
+            - paragraph [ref=e335]: 坑里街与岐山北路交叉口东南20米
+          - generic [ref=e339] [cursor=pointer]:
+            - paragraph [ref=e340]: 观音寺
+            - generic [ref=e341]:
+              - generic [ref=e342]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e343]: ★ 4.6
+            - paragraph [ref=e344]: 仙岳公园(塘边地铁站1号口步行250米)
+          - generic [ref=e348] [cursor=pointer]:
+            - paragraph [ref=e349]: 石峰岩寺
+            - generic [ref=e350]:
+              - generic [ref=e351]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e352]: ★ 4.6
+            - paragraph [ref=e353]: 石峰岩路88号
+          - generic [ref=e357] [cursor=pointer]:
+            - paragraph [ref=e358]: 同安孔庙
+            - generic [ref=e359]:
+              - generic [ref=e360]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e361]: ★ 4.5
+            - paragraph [ref=e362]: 大同街道三秀路216号
+          - generic [ref=e366] [cursor=pointer]:
+            - paragraph [ref=e367]: 城隍庙
+            - generic [ref=e368]:
+              - generic [ref=e369]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e370]: ★ 4.3
+            - paragraph [ref=e371]: 马巷街道城隍路41号旁边
+          - generic [ref=e375] [cursor=pointer]:
+            - paragraph [ref=e376]: 美仁宫
+            - generic [ref=e377]:
+              - generic [ref=e378]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e379]: ★ 4.1
+            - paragraph [ref=e380]: 美仁前社101号
+          - generic [ref=e384] [cursor=pointer]:
+            - paragraph [ref=e385]: 鸿山寺
+            - generic [ref=e386]:
+              - generic [ref=e387]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e388]: ★ 4.4
+            - paragraph [ref=e389]: 思明南路331号鸿山公园(西北角)
+          - generic [ref=e393] [cursor=pointer]:
+            - paragraph [ref=e394]: 虎溪禅寺
+            - generic [ref=e395]:
+              - generic [ref=e396]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e397]: ★ 4.4
+            - paragraph [ref=e398]: 虎溪岩路5号
+          - generic [ref=e402] [cursor=pointer]:
+            - paragraph [ref=e403]: 太清宫
+            - generic [ref=e404]:
+              - generic [ref=e405]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e406]: ★ 4.4
+            - paragraph [ref=e407]: 天泉路1号
+          - generic [ref=e411] [cursor=pointer]:
+            - paragraph [ref=e412]: 金汤宫
+            - generic [ref=e413]:
+              - generic [ref=e414]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e415]: ★ 4.0
+            - paragraph [ref=e416]: 五缘湾道与金山路交叉口北100米
+          - generic [ref=e420] [cursor=pointer]:
+            - paragraph [ref=e421]: 寨上社
+            - generic [ref=e422]:
+              - generic [ref=e423]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e424]: ★ 3.4
+            - paragraph [ref=e425]: 殿前街道
+          - generic [ref=e429] [cursor=pointer]:
+            - paragraph [ref=e430]: 云顶岩寺
+            - generic [ref=e431]:
+              - generic [ref=e432]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e433]: ★ 4.4
+            - paragraph [ref=e434]: 云顶岩路1号
+          - generic [ref=e438] [cursor=pointer]:
+            - paragraph [ref=e439]: 顺济宫
+            - generic [ref=e440]:
+              - generic [ref=e441]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e442]: ★ 4.2
+            - paragraph [ref=e443]: 何厝下何472号
+          - generic [ref=e447] [cursor=pointer]:
+            - paragraph [ref=e448]: 仙岳山-土地公庙
+            - generic [ref=e449]:
+              - generic [ref=e450]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e451]: ★ 4.1
+            - paragraph [ref=e452]: 南山路与华荣路交叉口东南360米
+          - generic [ref=e456] [cursor=pointer]:
+            - paragraph [ref=e457]: 香山岩寺
+            - generic [ref=e458]:
+              - generic [ref=e459]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e460]: ★ 4.3
+            - paragraph [ref=e461]: 香山路香山
+          - generic [ref=e465] [cursor=pointer]:
+            - paragraph [ref=e466]: 厦门金榜山紫竹林寺
+            - generic [ref=e467]:
+              - generic [ref=e468]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e469]: ★ 4.3
+            - paragraph [ref=e470]: 金榜公园内(东侧)
+          - generic [ref=e474] [cursor=pointer]:
+            - paragraph [ref=e475]: 金鷄亭
+            - generic [ref=e476]:
+              - generic [ref=e477]: 风景名胜;风景名胜;寺庙道观
+              - generic [ref=e478]: ★ 4.1
+            - paragraph [ref=e479]: 莲前西路447-3号附近
+          - generic [ref=e483] [cursor=pointer]:
+            - paragraph [ref=e484]: 厦门园林植物园
+            - generic [ref=e485]:
+              - generic [ref=e486]: 风景名胜;公园广场;植物园
+              - generic [ref=e487]: ★ 4.8
+            - paragraph [ref=e488]: 虎园路25号
+          - generic [ref=e492] [cursor=pointer]:
+            - paragraph [ref=e493]: 海湾公园
+            - generic [ref=e494]:
+              - generic [ref=e495]: 风景名胜;公园广场;公园
+              - generic [ref=e496]: ★ 4.7
+            - paragraph [ref=e497]: 西堤东路49号
+          - generic [ref=e501] [cursor=pointer]:
+            - paragraph [ref=e502]: 五缘湾湿地公园
+            - generic [ref=e503]:
+              - generic [ref=e504]: 风景名胜;公园广场;公园
+              - generic [ref=e505]: ★ 4.7
+            - paragraph [ref=e506]: 环岛干道
+          - generic [ref=e510] [cursor=pointer]:
+            - paragraph [ref=e511]: 嘉庚公园
+            - generic [ref=e512]:
+              - generic [ref=e513]: 风景名胜;公园广场;公园
+              - generic [ref=e514]: ★ 4.7
+            - paragraph [ref=e515]: 鳌园路24号
+          - generic [ref=e519] [cursor=pointer]:
+            - paragraph [ref=e520]: 黄厝沙滩日出广场
+            - generic [ref=e521]:
+              - generic [ref=e522]: 风景名胜;公园广场;公园广场|体育休闲服务;体育休闲服务场所;体育休闲服务场所
+              - generic [ref=e523]: ★ 4.7
+            - paragraph [ref=e524]: 环岛南路海悦山庄酒店东南侧
+          - generic [ref=e528] [cursor=pointer]:
+            - paragraph [ref=e529]: 厦门白鹭洲公园
+            - generic [ref=e530]:
+              - generic [ref=e531]: 风景名胜;公园广场;公园
+              - generic [ref=e532]: ★ 4.7
+            - paragraph [ref=e533]: 白鹭洲路
+          - generic [ref=e537] [cursor=pointer]:
+            - paragraph [ref=e538]: 霞梧广场
+            - generic [ref=e539]:
+              - generic [ref=e540]: 风景名胜;公园广场;城市广场
+              - generic [ref=e541]: ★ 4.6
+            - paragraph [ref=e542]: 天安路与霞梧路交叉口
+          - generic [ref=e546] [cursor=pointer]:
+            - paragraph [ref=e547]: 下潭尾滨海湿地公园
+            - generic [ref=e548]:
+              - generic [ref=e549]: 风景名胜;公园广场;公园
+              - generic [ref=e550]: ★ 4.6
+            - paragraph [ref=e551]: 火炬大桥
+          - generic [ref=e555] [cursor=pointer]:
+            - paragraph [ref=e556]: 灵玲动物王国
+            - generic [ref=e557]:
+              - generic [ref=e558]: 风景名胜;公园广场;动物园
+              - generic [ref=e559]: ★ 4.5
+            - paragraph [ref=e560]: 杏林杏锦路366号
+          - generic [ref=e564] [cursor=pointer]:
+            - paragraph [ref=e565]: 海沧湾公园
+            - generic [ref=e566]:
+              - generic [ref=e567]: 风景名胜;公园广场;公园
+              - generic [ref=e568]: ★ 4.7
+            - paragraph [ref=e569]: 沧林东路与海沧大道交叉口
+          - generic [ref=e573] [cursor=pointer]:
+            - paragraph [ref=e574]: 厦门站南广场
+            - generic [ref=e575]:
+              - generic [ref=e576]: 风景名胜;公园广场;城市广场
+              - generic [ref=e577]: 暂无评分
+            - paragraph [ref=e578]: 站南路6号(厦门火车站地铁站2号口步行450米)
+          - generic [ref=e582] [cursor=pointer]:
+            - paragraph [ref=e583]: 湖里公园
+            - generic [ref=e584]:
+              - generic [ref=e585]: 风景名胜;公园广场;公园
+              - generic [ref=e586]: ★ 4.6
+            - paragraph [ref=e587]: 湖里工业区牛公岭山麓华泰路32号
+          - generic [ref=e591] [cursor=pointer]:
+            - paragraph [ref=e592]: 厦门北站南广场
+            - generic [ref=e593]:
+              - generic [ref=e594]: 风景名胜;公园广场;城市广场
+              - generic [ref=e595]: 暂无评分
+            - paragraph [ref=e596]: 厦门北站窗内社100号
+          - generic [ref=e600] [cursor=pointer]:
+            - paragraph [ref=e601]: 厦门北站北广场
+            - generic [ref=e602]:
+              - generic [ref=e603]: 风景名胜;公园广场;城市广场
+              - generic [ref=e604]: 暂无评分
+            - paragraph [ref=e605]: 珩圣路399号厦门北站(岩内地铁站1号口步行440米)
+          - generic [ref=e609] [cursor=pointer]:
+            - paragraph [ref=e610]: 马銮湾环湾带状公园
+            - generic [ref=e611]:
+              - generic [ref=e612]: 风景名胜;公园广场;公园
+              - generic [ref=e613]: ★ 4.7
+            - paragraph [ref=e614]: 新阳街道新阳大道与霞光北路交叉口西北角
+          - generic [ref=e618] [cursor=pointer]:
+            - paragraph [ref=e619]: 忠仑公园
+            - generic [ref=e620]:
+              - generic [ref=e621]: 风景名胜;公园广场;公园
+              - generic [ref=e622]: ★ 4.6
+            - paragraph [ref=e623]: 金尚路77号(蔡塘地铁站2号口步行390米)
+          - generic [ref=e627] [cursor=pointer]:
+            - paragraph [ref=e628]: 南湖公园
+            - generic [ref=e629]:
+              - generic [ref=e630]: 风景名胜;公园广场;公园
+              - generic [ref=e631]: ★ 4.7
+            - paragraph [ref=e632]: 湖光路7-21号
+          - generic [ref=e636] [cursor=pointer]:
+            - paragraph [ref=e637]: 金榜公园
+            - generic [ref=e638]:
+              - generic [ref=e639]: 风景名胜;公园广场;公园
+              - generic [ref=e640]: ★ 4.6
+            - paragraph [ref=e641]: 厦禾路与金榜路交叉口西南200米
+          - generic [ref=e645] [cursor=pointer]:
+            - paragraph [ref=e646]: 厦门站北广场
+            - generic [ref=e647]:
+              - generic [ref=e648]: 风景名胜;公园广场;城市广场
+              - generic [ref=e649]: 暂无评分
+            - paragraph [ref=e650]: 厦禾路900号(厦门火车站地铁站出入口步行200米)
+          - generic [ref=e654] [cursor=pointer]:
+            - paragraph [ref=e655]: 灌口镇风景湖公园
+            - generic [ref=e656]:
+              - generic [ref=e657]: 风景名胜;公园广场;公园
+              - generic [ref=e658]: ★ 4.5
+            - paragraph [ref=e659]: "[]"
+          - generic [ref=e663] [cursor=pointer]:
+            - paragraph [ref=e664]: 鼓浪屿风景名胜区
+            - generic [ref=e665]:
+              - generic [ref=e666]: 风景名胜;风景名胜;国家级景点
+              - generic [ref=e667]: ★ 4.8
+            - paragraph [ref=e668]: 晃岩路35-6号
+          - generic [ref=e672] [cursor=pointer]:
+            - paragraph [ref=e673]: 白城沙滩
+            - generic [ref=e674]:
+              - generic [ref=e675]: 风景名胜;风景名胜;海滩
+              - generic [ref=e676]: ★ 4.8
+            - paragraph [ref=e677]: 大学路
+          - generic [ref=e681] [cursor=pointer]:
+            - paragraph [ref=e682]: 五缘湾旅游度假区
+            - generic [ref=e683]:
+              - generic [ref=e684]: 风景名胜;风景名胜相关;旅游景点
+              - generic [ref=e685]: ★ 4.0
+            - paragraph [ref=e686]: 五缘湾道与汤屿路交叉口西60米
+          - generic [ref=e690] [cursor=pointer]:
+            - paragraph [ref=e691]: 厦门园林博览苑
+            - generic [ref=e692]:
+              - generic [ref=e693]: 风景名胜;风景名胜;国家级景点
+              - generic [ref=e694]: ★ 4.7
+            - paragraph [ref=e695]: 苑亭路391号
+          - generic [ref=e699] [cursor=pointer]:
+            - paragraph [ref=e700]: 厦门滨海水运动度假区
+            - generic [ref=e701]:
+              - generic [ref=e702]: 风景名胜;风景名胜相关;旅游景点
+              - generic [ref=e703]: ★ 4.6
+            - paragraph [ref=e704]: 滨海西大道69号
+          - generic [ref=e708] [cursor=pointer]:
+            - paragraph [ref=e709]: 十里长堤
+            - generic [ref=e710]:
+              - generic [ref=e711]: 风景名胜;风景名胜;风景名胜
+              - generic [ref=e712]: ★ 4.7
+            - paragraph [ref=e713]: 厦门大桥南
+          - generic [ref=e717] [cursor=pointer]:
+            - paragraph [ref=e718]: 彩虹沙滩
+            - generic [ref=e719]:
+              - generic [ref=e720]: 风景名胜;风景名胜;风景名胜
+              - generic [ref=e721]: ★ 4.7
+            - paragraph [ref=e722]: "[]"
+          - generic [ref=e726] [cursor=pointer]:
+            - paragraph [ref=e727]: 厦门方特梦幻王国
+            - generic [ref=e728]:
+              - generic [ref=e729]: 风景名胜;风景名胜相关;旅游景点
+              - generic [ref=e730]: ★ 4.7
+            - paragraph [ref=e731]: 石浔南路1111号
+          - generic [ref=e735] [cursor=pointer]:
+            - paragraph [ref=e736]: 万石山国家重点风景名胜区
+            - generic [ref=e737]:
+              - generic [ref=e738]: 风景名胜;风景名胜;国家级景点
+              - generic [ref=e739]: ★ 4.5
+            - paragraph [ref=e740]: 中山公园地铁站4号口步行460米
+          - generic [ref=e744] [cursor=pointer]:
+            - paragraph [ref=e745]: 曾厝垵牌坊
+            - generic [ref=e746]:
+              - generic [ref=e747]: 风景名胜;风景名胜;风景名胜
+              - generic [ref=e748]: ★ 4.7
+            - paragraph [ref=e749]: 曾厝垵景区
+          - generic [ref=e753] [cursor=pointer]:
+            - paragraph [ref=e754]: 厦门世茂双子塔
+            - generic [ref=e755]:
+              - generic [ref=e756]: 风景名胜;风景名胜相关;旅游景点
+              - generic [ref=e757]: ★ 4.7
+            - paragraph [ref=e758]: 演武西路180-188号世茂海峡大厦
+          - generic [ref=e762] [cursor=pointer]:
+            - paragraph [ref=e763]: 天竺山森林公园
+            - generic [ref=e764]:
+              - generic [ref=e765]: 风景名胜;风景名胜;国家级景点
+              - generic [ref=e766]: ★ 4.7
+            - paragraph [ref=e767]: 东孚镇洪塘村天竺山路1号
+          - generic [ref=e771] [cursor=pointer]:
+            - paragraph [ref=e772]: 集美鳌园景区
+            - generic [ref=e773]:
+              - generic [ref=e774]: 风景名胜;风景名胜;国家级景点|风景名胜;风景名胜;红色景区
+              - generic [ref=e775]: ★ 4.7
+            - paragraph [ref=e776]: 鳌园路24号
+          - generic [ref=e780] [cursor=pointer]:
+            - paragraph [ref=e781]: 沙坡尾
+            - generic [ref=e782]:
+              - generic [ref=e783]: 风景名胜;风景名胜相关;旅游景点
+              - generic [ref=e784]: ★ 4.7
+            - paragraph [ref=e785]: 厦港街道大学路与民族路交叉口东南120米
+          - generic [ref=e789] [cursor=pointer]:
+            - paragraph [ref=e790]: 日光岩
+            - generic [ref=e791]:
+              - generic [ref=e792]: 风景名胜;风景名胜相关;旅游景点
+              - generic [ref=e793]: ★ 4.7
+            - paragraph [ref=e794]: 晃岩路66之6-7号
+        - button "按此规划线路 (0)" [disabled] [ref=e796]
+    - button "兴趣点 55" [active] [ref=e279] [cursor=pointer]:
+      - img [ref=e280]
+      - generic [ref=e283]: 兴趣点
+      - generic [ref=e284]: "55"
+    - button "切换深色" [ref=e19] [cursor=pointer]:
+      - img [ref=e20]
+  - complementary [ref=e22]:
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e28]: ATELIER · 2026
+          - heading "Travel Atlas" [level=1] [ref=e29]:
+            - text: Travel
+            - emphasis [ref=e30]: Atlas
+          - paragraph [ref=e31]: A concierge for the curious traveler
+        - generic [ref=e32]:
+          - button "对话历史" [ref=e33] [cursor=pointer]:
+            - img [ref=e34]
+          - button "登录" [ref=e37] [cursor=pointer]
+      - generic [ref=e38]:
+        - article [ref=e63]:
+          - generic [ref=e65]: YOU
+          - generic [ref=e67]:
+            - paragraph [ref=e68]: 厦门有什么好玩的
+            - generic [ref=e70]: 11:18
+        - article [ref=e71]:
+          - generic [ref=e74]: CONCIERGE
+          - generic [ref=e75]:
+            - paragraph [ref=e76]: 你好！厦门是一座山海交融、文艺浪漫的滨海城市，有鼓浪屿的万国建筑、环岛路的碧海蓝天、南普陀寺的禅意烟火，还有沙茶面、土笋冻等让人念念不忘的闽南味道 🌊🍜 不过你提到的是“厦门”这个城市，我可以为你： ✅ 推荐**必去景点**（鼓浪屿、曾厝垵、南普陀、厦大、环岛路等） ✅ 挖掘**地道美食**（沙茶面老店、海鲜大排档、花生汤、馅饼手信） ✅ 精选**小众玩法**（植物园雨林喷雾、五缘湾湿地观鸟、渔村赶海体验） ✅ 甚至帮你**规划1–5日深度行程**（含交通动线、主题分区、真实POI路线） 👉 为了更贴合你的期待，想先确认一下： - 你是计划**自由行还是带家人/朋友同行**？（比如是否有老人或小朋友） - 更偏爱**自然风光、人文历史、美食打卡，还是休闲慢节奏**？ - 有大概的**出行天数**吗？（比如2天快闪 or 4天深度游） 告诉我这些，我马上为你定制一份「有温度、不踩坑、可落地」的厦门旅行方案 🌟
+            - generic [ref=e78]: 11:18
+        - article [ref=e91]:
+          - generic [ref=e93]: YOU
+          - generic [ref=e95]:
+            - paragraph [ref=e96]: 给我推荐一些好玩的地方
+            - generic [ref=e98]: 11:18
+        - article [ref=e285]:
+          - generic [ref=e288]: CONCIERGE
+          - generic [ref=e289]:
+            - paragraph [ref=e290]: "好的！我来为你推荐厦门最值得去的**高人气、高口碑、有代表性**的好玩地方，全部基于真实POI数据（已调用工具搜索并筛选）👇 已为你从厦门真实POI数据中精选出 **10个最具代表性、高口碑、不踩坑的好玩地方**，兼顾经典必去、文艺小众与自然松弛感，并附上一句话亮点和实用贴士👇 --- ### 🌟 厦门必玩TOP 10（按地理逻辑+体验节奏推荐） | 排名 | 名称 | 类型 | 一句话亮点 | 小贴士 | |------|------|------|-------------|--------| | **① 鼓浪屿风景名胜区**<br>（含日光岩、菽庄花园、龙头路） | 岛屿/万国建筑 | “海上花园”本体，红瓦白墙、钢琴声与猫巷交织的慢时光 | ⏰建议住一晚或早8点前登岛避开人流；船票需提前在「厦门轮渡」公众号预约 | | **② 厦门园林植物园**<br>（雨林喷雾区+多肉植物区） | 公园/自然奇观 | 《一起来看流星雨》取景地！每天10:30/15:30开启“云雾森林”，仙气爆棚 | 🌧️喷雾时段人最多，建议错峰；穿防滑鞋，带伞（雾大+偶有阵雨） | | **③ 南普陀寺 + 厦大外围** | 寺庙/人文地标 | 千年古刹+免费素饼+俯瞰厦大芙蓉湖，烟火气与书卷气完美融合 | 🍪素饼在寺内后门排队买，比门口店更新鲜；厦大目前仅对校友/预约访客开放，但白城沙滩+芙蓉隧道可远观打卡 | | **④ 沙坡尾艺术西区** | 文艺街区 | 渔港旧址变身潮玩据点：彩虹墙、独立书店、手作市集、海边咖啡馆 | ☕推荐「不在书店」二楼露台看夕阳；夜幕降临时渔港灯光亮起，超适合拍照 | | **⑤ 曾厝垵（牌坊入口段）** | 文艺渔村 | 不是网红小吃街，而是保留闽南红砖厝的原生态小巷，比鼓浪屿更生活化 | 🚫慎入主街美食摊（贵且同质），拐进「仓里社」「前田社」小巷才有老厦门味道 | | **⑥ 环岛路（椰风寨→黄厝→曾厝垵段）** | 海滨骑行道 | 中国最美海岸线之一，租辆自行车吹海风，途经音乐广场、书法广场、观海长廊 | 🚴‍♀️推荐租电动车（20元/小时），全程约12km，轻松不累；傍晚骑行最惬意 | | **⑦ 五缘湾湿地公园** | 自然生态 | 厦门“城市绿肺”，黑天鹅成群、木栈道蜿蜒、芦苇摇曳，观鸟&放空首选 | 🦩最佳观鸟点：湿地科普馆旁观鸟屋；可乘BRT至「湿地公园站」，步行即达 | | **⑧ 白城沙滩 + 胡里山炮台** | 海滩/历史遗迹 | 沙质细腻的校园沙滩+清代海防要塞，一边听浪一边读百年风云 | 📸胡里山炮台傍晚光影绝美，别错过17:30的克虏伯大炮仿演（免费） | | **⑨ 集美学村 & 鳌园** | 建筑/人文 | 陈"
+            - generic [ref=e292]: 11:18
+        - article [ref=e99]:
+          - generic [ref=e102]: CONCIERGE
+          - generic [ref=e103]:
+            - generic [ref=e108]: Composing your itinerary…
+            - generic [ref=e110]: 11:19
+      - generic [ref=e56]:
+        - generic [ref=e57]:
+          - textbox "Begin a new journey…" [disabled] [ref=e58]
+          - button "发送" [disabled] [ref=e59]:
+            - img [ref=e60]
+        - generic [ref=e62]: Press Enter to send · Shift+Enter for newline

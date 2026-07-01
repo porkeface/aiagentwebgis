@@ -205,7 +205,7 @@ export const useChatStore = defineStore("chat", () => {
           const data = event.data as { step: number; total: number; label: string } | null;
           if (data) {
             progress.value = data;
-            toolStatus.value = `${data.label} (${data.step}/${data.total})`;
+            // Don't append (N/M) — the label already stands on its own
           }
           break;
         }

@@ -1,0 +1,43 @@
+- generic [ref=f7e3]:
+  - generic [ref=f7e5]:
+    - generic [ref=f7e7]:
+      - link "Leaflet" [ref=f7e8] [cursor=pointer]:
+        - /url: https://leafletjs.com
+        - img [ref=f7e9]
+        - text: Leaflet
+      - text: "| © 高德地图"
+    - button "历史规划" [ref=f7e14] [cursor=pointer]:
+      - img [ref=f7e15]
+      - generic [ref=f7e18]: 历史规划
+    - button "切换深色" [ref=f7e19] [cursor=pointer]:
+      - img [ref=f7e20]
+  - complementary [ref=f7e22]:
+    - generic [ref=f7e23]:
+      - generic [ref=f7e24]:
+        - generic [ref=f7e25]:
+          - generic [ref=f7e28]: ATELIER · 2026
+          - heading "Travel Atlas" [level=1] [ref=f7e29]:
+            - text: Travel
+            - emphasis [ref=f7e30]: Atlas
+          - paragraph [ref=f7e31]: A concierge for the curious traveler
+        - generic [ref=f7e32]:
+          - button "对话历史" [ref=f7e33] [cursor=pointer]:
+            - img [ref=f7e34]
+          - button "登录" [ref=f7e37] [cursor=pointer]
+      - generic [ref=f7e38]:
+        - article [ref=f7e63]:
+          - generic [ref=f7e65]: YOU
+          - generic [ref=f7e67]:
+            - paragraph [ref=f7e68]: 厦门有什么好玩的
+            - generic [ref=f7e70]: 11:58
+        - article [ref=f7e71]:
+          - generic [ref=f7e74]: CONCIERGE
+          - generic [ref=f7e75]:
+            - paragraph [ref=f7e76]: 你好！厦门是一座山海交融、文艺浪漫的滨海城市，有鼓浪屿的万国建筑、环岛路的碧海蓝天、南普陀寺的禅意古韵，还有沙茶面、土笋冻等让人念念不忘的闽南味道 🌊🍜 不过你提到的是“厦门”这个城市，我可以为你： ✅ 推荐**必去景点**（鼓浪屿、曾厝垵、南普陀、厦门大学等） ✅ 挖掘地道**闽南美食**（老字号沙茶面、姜母鸭、海蛎煎、花生汤） ✅ 发现小众玩法（五缘湾湿地、山海健康步道、华新路咖啡街） ✅ 甚至帮你**规划1–4日深度行程**（含交通、路线、主题） 你想先了解哪一类？比如： 🔹 “厦门最值得去的5个景点” 🔹 “本地人常去的美食街和小吃” 🔹 或直接说：“帮我规划厦门三日游” 我很乐意为你定制～ 😊
+            - generic [ref=f7e78]: 11:58
+      - generic [ref=f7e56]:
+        - generic [ref=f7e57]:
+          - textbox "Begin a new journey…" [ref=f7e58]
+          - button "发送" [disabled] [ref=f7e59]:
+            - img [ref=f7e60]
+        - generic [ref=f7e62]: Press Enter to send · Shift+Enter for newline

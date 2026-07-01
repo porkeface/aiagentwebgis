@@ -1,0 +1,43 @@
+- generic [ref=f5e3]:
+  - generic [ref=f5e5]:
+    - generic [ref=f5e7]:
+      - link "Leaflet" [ref=f5e8] [cursor=pointer]:
+        - /url: https://leafletjs.com
+        - img [ref=f5e9]
+        - text: Leaflet
+      - text: "| © 高德地图"
+    - button "历史规划" [ref=f5e14] [cursor=pointer]:
+      - img [ref=f5e15]
+      - generic [ref=f5e18]: 历史规划
+    - button "切换深色" [ref=f5e19] [cursor=pointer]:
+      - img [ref=f5e20]
+  - complementary [ref=f5e22]:
+    - generic [ref=f5e23]:
+      - generic [ref=f5e24]:
+        - generic [ref=f5e25]:
+          - generic [ref=f5e28]: ATELIER · 2026
+          - heading "Travel Atlas" [level=1] [ref=f5e29]:
+            - text: Travel
+            - emphasis [ref=f5e30]: Atlas
+          - paragraph [ref=f5e31]: A concierge for the curious traveler
+        - generic [ref=f5e32]:
+          - button "对话历史" [ref=f5e33] [cursor=pointer]:
+            - img [ref=f5e34]
+          - button "登录" [ref=f5e37] [cursor=pointer]
+      - generic [ref=f5e38]:
+        - article [ref=f5e63]:
+          - generic [ref=f5e65]: YOU
+          - generic [ref=f5e67]:
+            - paragraph [ref=f5e68]: 厦门有什么好玩的
+            - generic [ref=f5e70]: 11:40
+        - article [ref=f5e71]:
+          - generic [ref=f5e74]: CONCIERGE
+          - generic [ref=f5e75]:
+            - paragraph [ref=f5e76]: 你好！厦门是一座山海交融、文艺浪漫的滨海城市，有鼓浪屿的万国建筑、环岛路的碧海蓝天、南普陀寺的禅意烟火，还有沙茶面、土笋冻等让人念念不忘的闽南味道 🌊🍜 不过你提到的是“厦门”这个城市，我可以为你： ✅ 推荐**必去景点**（鼓浪屿、曾厝垵、南普陀、厦大、环岛路等） ✅ 挖掘**地道美食**（沙茶面老店、海鲜大排档、花生汤、馅饼手信） ✅ 精选**小众玩法**（植物园雨林喷雾、五缘湾湿地观鸟、渔村赶海体验） ✅ 甚至帮你**规划1–5日深度行程**（含交通动线、主题分区、真实POI路线） 👉 为了更贴合你的期待，想先确认一下： - 你是计划**自由行还是带家人/朋友同行**？（比如是否有老人或小朋友） - 更偏爱**自然风光、人文历史、美食打卡，还是拍照出片**？ - 这次大概停留**几天**？ 我可以立刻调用工具，为你生成一份「真实POI+地理分区+每日动线」的专属行程 😊
+            - generic [ref=f5e78]: 11:40
+      - generic [ref=f5e56]:
+        - generic [ref=f5e57]:
+          - textbox "Begin a new journey…" [ref=f5e58]
+          - button "发送" [disabled] [ref=f5e59]:
+            - img [ref=f5e60]
+        - generic [ref=f5e62]: Press Enter to send · Shift+Enter for newline

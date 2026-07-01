@@ -19,12 +19,12 @@ def _order_pois_tsp(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     Returns a new list in optimal visit order.  Pure function — no I/O.
     """
-    from agent.tools.optimize_route import _nearest_neighbor_tsp
+    from agent.tools.tsp_solver import solve_tsp
 
     n = len(pois)
     if n <= 1:
         return list(pois)
-    order, _ = _nearest_neighbor_tsp(pois)
+    order, _ = solve_tsp(pois)
     return [pois[i] for i in order]
 
 

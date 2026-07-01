@@ -1,0 +1,175 @@
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic:
+        - generic:
+          - button "1" [ref=e114] [cursor=pointer]:
+            - generic [ref=e116]: "1"
+          - button "2" [ref=e117] [cursor=pointer]:
+            - generic [ref=e119]: "2"
+          - button "3" [ref=e120] [cursor=pointer]:
+            - generic [ref=e122]: "3"
+          - button "4" [ref=e123] [cursor=pointer]:
+            - generic [ref=e125]: "4"
+          - button "5" [ref=e126] [cursor=pointer]:
+            - generic [ref=e128]: "5"
+          - button "6" [ref=e129] [cursor=pointer]:
+            - generic [ref=e131]: "6"
+          - button "7" [ref=e132] [cursor=pointer]:
+            - generic [ref=e134]: "7"
+          - button "8" [ref=e135] [cursor=pointer]:
+            - generic [ref=e137]: "8"
+          - button "9" [ref=e138] [cursor=pointer]:
+            - generic [ref=e140]: "9"
+          - button "10" [ref=e141] [cursor=pointer]:
+            - generic [ref=e143]: "10"
+          - button "11" [ref=e144] [cursor=pointer]:
+            - generic [ref=e146]: "11"
+          - button "12" [ref=e147] [cursor=pointer]:
+            - generic [ref=e149]: "12"
+          - button "13" [ref=e150] [cursor=pointer]:
+            - generic [ref=e152]: "13"
+          - button "14" [ref=e153] [cursor=pointer]:
+            - generic [ref=e155]: "14"
+          - button "15" [ref=e156] [cursor=pointer]:
+            - generic [ref=e158]: "15"
+          - button "16" [ref=e159] [cursor=pointer]:
+            - generic [ref=e161]: "16"
+          - button "17" [ref=e162] [cursor=pointer]:
+            - generic [ref=e164]: "17"
+          - button "18" [ref=e165] [cursor=pointer]:
+            - generic [ref=e167]: "18"
+          - button "19" [ref=e168] [cursor=pointer]:
+            - generic [ref=e170]: "19"
+          - button "20" [ref=e171] [cursor=pointer]:
+            - generic [ref=e173]: "20"
+          - button "21" [ref=e174] [cursor=pointer]:
+            - generic [ref=e176]: "21"
+          - button "22" [ref=e177] [cursor=pointer]:
+            - generic [ref=e179]: "22"
+          - button "23" [ref=e180] [cursor=pointer]:
+            - generic [ref=e182]: "23"
+          - button "24" [ref=e183] [cursor=pointer]:
+            - generic [ref=e185]: "24"
+          - button "25" [ref=e186] [cursor=pointer]:
+            - generic [ref=e188]: "25"
+          - button "26" [ref=e189] [cursor=pointer]:
+            - generic [ref=e191]: "26"
+          - button "27" [ref=e192] [cursor=pointer]:
+            - generic [ref=e194]: "27"
+          - button "28" [ref=e195] [cursor=pointer]:
+            - generic [ref=e197]: "28"
+          - button "29" [ref=e198] [cursor=pointer]:
+            - generic [ref=e200]: "29"
+          - button "30" [ref=e201] [cursor=pointer]:
+            - generic [ref=e203]: "30"
+          - button "31" [ref=e204] [cursor=pointer]:
+            - generic [ref=e206]: "31"
+          - button "32" [ref=e207] [cursor=pointer]:
+            - generic [ref=e209]: "32"
+          - button "33" [ref=e210] [cursor=pointer]:
+            - generic [ref=e212]: "33"
+          - button "34" [ref=e213] [cursor=pointer]:
+            - generic [ref=e215]: "34"
+          - button "35" [ref=e216] [cursor=pointer]:
+            - generic [ref=e218]: "35"
+          - button "36" [ref=e219] [cursor=pointer]:
+            - generic [ref=e221]: "36"
+          - button "37" [ref=e222] [cursor=pointer]:
+            - generic [ref=e224]: "37"
+          - button "38" [ref=e225] [cursor=pointer]:
+            - generic [ref=e227]: "38"
+          - button "39" [ref=e228] [cursor=pointer]:
+            - generic [ref=e230]: "39"
+          - button "40" [ref=e231] [cursor=pointer]:
+            - generic [ref=e233]: "40"
+          - button "41" [ref=e234] [cursor=pointer]:
+            - generic [ref=e236]: "41"
+          - button "42" [ref=e237] [cursor=pointer]:
+            - generic [ref=e239]: "42"
+          - button "43" [ref=e240] [cursor=pointer]:
+            - generic [ref=e242]: "43"
+          - button "44" [ref=e243] [cursor=pointer]:
+            - generic [ref=e245]: "44"
+          - button "45" [ref=e246] [cursor=pointer]:
+            - generic [ref=e248]: "45"
+          - button "46" [ref=e249] [cursor=pointer]:
+            - generic [ref=e251]: "46"
+          - button "47" [ref=e252] [cursor=pointer]:
+            - generic [ref=e254]: "47"
+          - button "48" [ref=e255] [cursor=pointer]:
+            - generic [ref=e257]: "48"
+          - button "49" [ref=e258] [cursor=pointer]:
+            - generic [ref=e260]: "49"
+          - button "50" [ref=e261] [cursor=pointer]:
+            - generic [ref=e263]: "50"
+          - button "51" [ref=e264] [cursor=pointer]:
+            - generic [ref=e266]: "51"
+          - button "52" [ref=e267] [cursor=pointer]:
+            - generic [ref=e269]: "52"
+          - button "53" [ref=e270] [cursor=pointer]:
+            - generic [ref=e272]: "53"
+          - button "54" [ref=e273] [cursor=pointer]:
+            - generic [ref=e275]: "54"
+          - button "55" [ref=e276] [cursor=pointer]:
+            - generic [ref=e278]: "55"
+      - generic [ref=e7]:
+        - link "Leaflet" [ref=e8] [cursor=pointer]:
+          - /url: https://leafletjs.com
+          - img [ref=e9]
+          - text: Leaflet
+        - text: "| © 高德地图"
+    - button "历史规划" [ref=e14] [cursor=pointer]:
+      - img [ref=e15]
+      - generic [ref=e18]: 历史规划
+    - button "兴趣点 55" [ref=e279] [cursor=pointer]:
+      - img [ref=e280]
+      - generic [ref=e283]: 兴趣点
+      - generic [ref=e284]: "55"
+    - button "切换深色" [ref=e19] [cursor=pointer]:
+      - img [ref=e20]
+  - complementary [ref=e22]:
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e28]: ATELIER · 2026
+          - heading "Travel Atlas" [level=1] [ref=e29]:
+            - text: Travel
+            - emphasis [ref=e30]: Atlas
+          - paragraph [ref=e31]: A concierge for the curious traveler
+        - generic [ref=e32]:
+          - button "对话历史" [ref=e33] [cursor=pointer]:
+            - img [ref=e34]
+          - button "登录" [ref=e37] [cursor=pointer]
+      - generic [ref=e38]:
+        - article [ref=e63]:
+          - generic [ref=e65]: YOU
+          - generic [ref=e67]:
+            - paragraph [ref=e68]: 厦门有什么好玩的
+            - generic [ref=e70]: 11:18
+        - article [ref=e71]:
+          - generic [ref=e74]: CONCIERGE
+          - generic [ref=e75]:
+            - paragraph [ref=e76]: 你好！厦门是一座山海交融、文艺浪漫的滨海城市，有鼓浪屿的万国建筑、环岛路的碧海蓝天、南普陀寺的禅意烟火，还有沙茶面、土笋冻等让人念念不忘的闽南味道 🌊🍜 不过你提到的是“厦门”这个城市，我可以为你： ✅ 推荐**必去景点**（鼓浪屿、曾厝垵、南普陀、厦大、环岛路等） ✅ 挖掘**地道美食**（沙茶面老店、海鲜大排档、花生汤、馅饼手信） ✅ 精选**小众玩法**（植物园雨林喷雾、五缘湾湿地观鸟、渔村赶海体验） ✅ 甚至帮你**规划1–5日深度行程**（含交通动线、主题分区、真实POI路线） 👉 为了更贴合你的期待，想先确认一下： - 你是计划**自由行还是带家人/朋友同行**？（比如是否有老人或小朋友） - 更偏爱**自然风光、人文历史、美食打卡，还是休闲慢节奏**？ - 有大概的**出行天数**吗？（比如2天快闪 or 4天深度游） 告诉我这些，我马上为你定制一份「有温度、不踩坑、可落地」的厦门旅行方案 🌟
+            - generic [ref=e78]: 11:18
+        - article [ref=e91]:
+          - generic [ref=e93]: YOU
+          - generic [ref=e95]:
+            - paragraph [ref=e96]: 给我推荐一些好玩的地方
+            - generic [ref=e98]: 11:18
+        - article [ref=e285]:
+          - generic [ref=e288]: CONCIERGE
+          - generic [ref=e289]:
+            - paragraph [ref=e290]: "好的！我来为你推荐厦门最值得去的**高人气、高口碑、有代表性**的好玩地方，全部基于真实POI数据（已调用工具搜索并筛选）👇 已为你从厦门真实POI数据中精选出 **10个最具代表性、高口碑、不踩坑的好玩地方**，兼顾经典必去、文艺小众与自然松弛感，并附上一句话亮点和实用贴士👇 --- ### 🌟 厦门必玩TOP 10（按地理逻辑+体验节奏推荐） | 排名 | 名称 | 类型 | 一句话亮点 | 小贴士 | |------|------|------|-------------|--------| | **① 鼓浪屿风景名胜区**<br>（含日光岩、菽庄花园、龙头路） | 岛屿/万国建筑 | “海上花园”本体，红瓦白墙、钢琴声与猫巷交织的慢时光 | ⏰建议住一晚或早8点前登岛避开人流；船票需提前在「厦门轮渡」公众号预约 | | **② 厦门园林植物园**<br>（雨林喷雾区+多肉植物区） | 公园/自然奇观 | 《一起来看流星雨》取景地！每天10:30/15:30开启“云雾森林”，仙气爆棚 | 🌧️喷雾时段人最多，建议错峰；穿防滑鞋，带伞（雾大+偶有阵雨） | | **"
+            - generic [ref=e292]: 11:18
+        - article [ref=e99]:
+          - generic [ref=e102]: CONCIERGE
+          - generic [ref=e103]:
+            - generic [ref=e108]: Composing your itinerary…
+            - generic [ref=e110]: 11:19
+      - generic [ref=e56]:
+        - generic [ref=e57]:
+          - textbox "Begin a new journey…" [disabled] [ref=e58]
+          - button "发送" [disabled] [ref=e59]:
+            - img [ref=e60]
+        - generic [ref=e62]: Press Enter to send · Shift+Enter for newline
