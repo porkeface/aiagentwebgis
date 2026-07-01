@@ -17,7 +17,7 @@ from langchain_core.tools import tool
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-_MAX_DAILY_BUDGET_MIN = 600  # 10 hours — hard upper bound
+_MAX_DAILY_BUDGET_MIN = 840  # 14 hours — hard upper bound
 _TRANSIT_RATIO_WARN = 1.5     # warn when transit > 1.5× visit time
 
 
@@ -153,7 +153,7 @@ async def submit_plan(
                 "请修正上述问题后重新调用 submit_plan。常见修正方法："
                 "1) 删除跨天重复的 POI 并替换为新的；"
                 "2) 总时长超限的天拆分为多天；"
-                "3) 确保每个 POI 有真实的 poi_id。"
+                "3) 确保每个 POI 有真实的 poi_id/name/lng/lat。"
             ),
         }
 
