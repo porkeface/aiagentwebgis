@@ -21,6 +21,8 @@ from agent.tools.spatial_analysis import score_pois
 from agent.tools.weather import get_weather
 from agent.tools.optimize_route import optimize_route
 from agent.tools.submit_plan import submit_plan
+from agent.tools.geo_partition import geo_partition
+from agent.tools.plan_day_route import plan_day_route
 
 # ---------------------------------------------------------------------------
 # Singleton AmapService factory
@@ -63,6 +65,8 @@ AGENT_TOOLS = [
     geocode,
     reverse_geocode,
     get_weather,
+    geo_partition,
+    plan_day_route,
 ]
 
 __all__ = [
@@ -78,4 +82,6 @@ __all__ = [
     "geocode",
     "reverse_geocode",
     "get_weather",
+    "geo_partition",
+    "plan_day_route",
 ]

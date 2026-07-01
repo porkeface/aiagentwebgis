@@ -2,12 +2,14 @@
 
 The LLM calls this after completing its trip layout.  The tool validates
 the plan structure and rules (no duplicates, meal coverage per day, valid
-coordinates) then returns the validated plan.  The API stream handler
-intercepts the tool output and emits the ``route_result`` SSE event.
+coordinates, geographic proximity) then returns the validated plan.
+The API stream handler intercepts the tool output and emits the
+``route_result`` SSE event.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from langchain_core.tools import tool
@@ -16,6 +18,26 @@ from langchain_core.tools import tool
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
+
+
+def _haversine_km(
+    lng1: float, lat1: float,
+    lng2: float, lat2: float,
+) -> float:
+    """Haversine distance between two WGS84 points."""
+    r = 6371.0
+    d_lat = math.radians(lat2 - lat1)
+    d_lng = math.radians(lng2 - lng1)
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(d_lng / 2) ** 2
+    )
+    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+_MAX_SAME_DAY_SPREAD_KM = 30.0  # reject plans where any day's POIs span >30 km
 
 
 def _validate_plan(plan_data: dict[str, Any]) -> list[str]:
@@ -76,6 +98,37 @@ def _validate_plan(plan_data: dict[str, Any]) -> list[str]:
         if not meal_types:
             errors.append(f"第{day_num}天: 缺少餐饮安排，每天至少需要 1 个 lunch 或 dinner POI")
 
+        # Validate geographic spread — prevent cross-district leaping
+        # (only when submit_plan is called after POI resolution, i.e. the
+        # API layer has enriched poi entries with lng/lat)
+        for day_plan in daily_plans:
+            day_pois = day_plan.get("pois", [])
+            coords: list[tuple[float, float]] = []
+            for p in day_pois:
+                lng = p.get("lng")
+                lat = p.get("lat")
+                if isinstance(lng, (int, float)) and isinstance(lat, (int, float)):
+                    coords.append((float(lng), float(lat)))
+            if len(coords) >= 2:
+                max_d = 0.0
+                max_pair: tuple[str, str] = ("?", "?")
+                for i in range(len(coords)):
+                    for j in range(i + 1, len(coords)):
+                        d = _haversine_km(
+                            coords[i][0], coords[i][1],
+                            coords[j][0], coords[j][1],
+                        )
+                        if d > max_d:
+                            max_d = d
+                            max_pair = (day_pois[i].get("poi_id", "?"), day_pois[j].get("poi_id", "?"))
+                if max_d > _MAX_SAME_DAY_SPREAD_KM:
+                    errors.append(
+                        f"第{day_plan.get('day','?')}天: POI 跨度过大 "
+                        f"({max_pair[0]} 距 {max_pair[1]} 约 {max_d:.0f}km，"
+                        f"上限 {_MAX_SAME_DAY_SPREAD_KM:.0f}km)，"
+                        f"请将跨区 POI 分配到不同天"
+                    )
+
         # Validate time_slots
         valid_slots = {"morning", "noon", "afternoon", "evening"}
         for i, poi in enumerate(pois):
@@ -104,6 +157,7 @@ async def submit_plan(
     - 每天有餐饮安排
     - 每天 POI 数量合理（2-6 个）
     - 时间槽和用餐类型合法
+    - 同天 POI 跨度不超过 30km（防跨区穿梭）
 
     校验通过后，行程会被推送到地图上展示。
 

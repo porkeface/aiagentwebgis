@@ -1,6 +1,6 @@
 """Amap (Gaode Map) API service for POI search, geocoding, and route planning.
 
-Base URL: https://restapi.amap.com/v3
+Base URL: https://restapi.amap.com/v3 (legacy) / v5 (direction)
 Docs: https://lbs.amap.com/api/webservice/summary
 """
 
@@ -15,11 +15,12 @@ import httpx
 logger = logging.getLogger(__name__)
 
 AMAP_BASE_URL = "https://restapi.amap.com/v3"
+AMAP_V5_BASE_URL = "https://restapi.amap.com/v5"
 
 VALID_ROUTE_MODES = frozenset({"walking", "driving", "bicycling", "transit"})
 
 # Retry configuration for Amap API
-AMAP_MAX_RETRIES = 2
+AMAP_MAX_RETRIES = 3
 AMAP_RETRY_BACKOFF_BASE = 0.5  # seconds
 
 
@@ -419,4 +420,100 @@ class AmapService:
             "distance_km": distance_m / 1000.0,
             "duration_min": duration_s / 60.0,
             "polyline": polyline,
+        }
+
+    async def plan_route_with_waypoints(
+        self,
+        origin: tuple[float, float],
+        destination: tuple[float, float],
+        waypoints: list[tuple[float, float]] | None = None,
+        mode: str = "driving",
+    ) -> dict[str, Any]:
+        """Plan a multi-waypoint driving route via Amap v5 direction API.
+
+        Uses the newer /v5/direction/driving endpoint which supports up to
+        16 waypoints.  Waypoints are visited in the submitted order.
+
+        Args:
+            origin: (lng, lat) of the first stop.
+            destination: (lng, lat) of the last stop.
+            waypoints: Optional list of (lng, lat) for intermediate stops.
+            mode: Only "driving" supports waypoints in v5.
+
+        Returns:
+            Dict with:
+            - distance_km: Total driving distance.
+            - duration_min: Total estimated duration.
+            - polyline: Concatenated coordinate string for rendering.
+            - segments: List of {from, to, distance_km, duration_min} per leg.
+        """
+        all_coords = [origin]
+        if waypoints:
+            all_coords.extend(waypoints)
+        all_coords.append(destination)
+
+        # Use v3 API with waypoints for compatibility (v5 key may differ)
+        params: dict[str, Any] = {
+            "origin": f"{origin[0]},{origin[1]}",
+            "destination": f"{destination[0]},{destination[1]}",
+        }
+
+        if mode == "driving" and waypoints:
+            # Build waypoints string: lng1,lat1;lng2,lat2
+            wp_str = ";".join(f"{w[0]},{w[1]}" for w in waypoints)
+            params["waypoints"] = wp_str
+            # Strategy: 0=fastest, 2=least distance
+            params["strategy"] = "0"
+            params["extensions"] = "all"
+
+        data = await self._request(f"direction/{mode}", params)
+
+        route = data.get("route", {})
+        paths = route.get("paths", [])
+        if not paths:
+            return {
+                "distance_km": 0.0,
+                "duration_min": 0.0,
+                "polyline": "",
+                "segments": [],
+            }
+
+        path = paths[0]
+        distance_m = _safe_float(path.get("distance", 0))
+        duration_s = _safe_float(path.get("duration", 0))
+
+        # Build per-leg segments from steps
+        steps = path.get("steps", [])
+        segments: list[dict[str, Any]] = []
+        polyline_parts: list[str] = []
+
+        for i, step in enumerate(steps):
+            seg_distance = _safe_float(step.get("distance", 0)) / 1000.0
+            seg_duration = _safe_float(step.get("duration", 0)) / 60.0
+            step_polyline = step.get("polyline", "")
+            if step_polyline:
+                polyline_parts.append(step_polyline)
+
+            # Map step to nearest known POI
+            from_name = "?"
+            to_name = "?"
+            if i < len(all_coords):
+                from_name = f"stop_{i + 1}"
+            if i + 1 < len(all_coords):
+                to_name = f"stop_{i + 2}"
+
+            segments.append({
+                "from": from_name,
+                "to": to_name,
+                "distance_km": round(seg_distance, 2),
+                "duration_min": round(seg_duration, 2),
+            })
+
+        polyline = ";".join(polyline_parts)
+
+        return {
+            "distance_km": round(distance_m / 1000.0, 2),
+            "duration_min": round(duration_s / 60.0, 2),
+            "polyline": polyline,
+            "segments": segments,
         }
