@@ -60,22 +60,27 @@ def build_graph(
 
     # --- Build the LLM -------------------------------------------------------
     from langchain_openai import ChatOpenAI
+    from langchain_core.messages import SystemMessage
     from app.config import settings
 
     model = ChatOpenAI(
         model="qwen-plus",
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         api_key=settings.dashscope_api_key,
-        temperature=0.3,
+        temperature=0.0,
         streaming=True,
     )
+
+    # Wrap prompt in a SystemMessage so LangGraph binds it to the model
+    # as a system instruction rather than a user message.
+    system_message = SystemMessage(content=AGENT_SYSTEM_PROMPT)
 
     # --- Build the agent -----------------------------------------------------
     # create_react_agent returns a CompiledStateGraph already.
     graph = create_react_agent(
         model=model,
         tools=AGENT_TOOLS,
-        prompt=AGENT_SYSTEM_PROMPT,
+        prompt=system_message,
         state_schema=AgentState,
     )
 

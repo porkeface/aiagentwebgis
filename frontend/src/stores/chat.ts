@@ -287,7 +287,11 @@ export const useChatStore = defineStore("chat", () => {
           : [];
         const planSummary = snapshot.plan_summary as { city: string; days: number } | undefined;
 
-        if (pois.length > 0) mapStore.setPOIs(pois);
+        if (pois.length > 0) {
+          mapStore.setPOIs(pois);
+          // Auto-select all POIs when restoring a session
+          mapStore.deselectAllPois();
+        }
         if (routes.length > 0) {
           mapStore.setRoutes(routes);
           mapStore.setActiveDay(0);

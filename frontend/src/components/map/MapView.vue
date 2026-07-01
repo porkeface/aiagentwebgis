@@ -9,6 +9,7 @@ import RouteLayer from './RouteLayer.vue'
 import ItineraryTimeline from './ItineraryTimeline.vue'
 import POIDetailCard from './POIDetailCard.vue'
 import TripListDrawer from './TripListDrawer.vue'
+import PoiSelectPanel from './PoiSelectPanel.vue'
 import { useTripStore } from '@/stores/trip'
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -25,6 +26,8 @@ const activePanel = ref<'trips' | null>(null)
 const pois = computed(() => mapStore.pois)
 const routes = computed(() => mapStore.routes)
 const hasRoutes = computed(() => routes.value.length > 0)
+const showPoiButton = computed(() => pois.value.length > 0 && !hasRoutes.value)
+const showPoiPanel = computed(() => showPoiButton.value && mapStore.poiPanelOpen)
 const selectedPOI = computed(() => mapStore.selectedPOI)
 const leafletMap = shallowRef<L.Map | null>(null)
 
@@ -233,10 +236,29 @@ function onTripsClick(): void {
       <TripListDrawer @close="activePanel = null" />
     </div>
 
+    <!-- POI 兴趣点选择面板 — browse mode only -->
+    <div v-if="showPoiPanel" class="map-panel">
+      <PoiSelectPanel @close="mapStore.setPoiPanelOpen(false)" />
+    </div>
+
     <!-- 查看行程 panel — ItineraryTimeline in the same .map-panel slot -->
     <div v-if="hasRoutes && mapStore.timelineOpen" class="map-panel">
       <ItineraryTimeline />
     </div>
+
+    <!-- Floating POI button — visible when browse-mode POIs are loaded -->
+    <button
+      v-if="showPoiButton"
+      class="map-poi-btn"
+      @click="mapStore.togglePoiPanel()"
+    >
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="12" cy="10" r="3" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <span>兴趣点</span>
+      <span class="map-poi-btn__badge">{{ mapStore.poiCount }}</span>
+    </button>
 
     <button
       class="map-dark-toggle"
@@ -425,6 +447,50 @@ function onTripsClick(): void {
   background: rgba(243, 236, 225, 0.08);
 }
 
+/* ── Floating POI button ───────────────────────────────────────────────── */
+.map-poi-btn {
+  position: absolute;
+  bottom: var(--space-xl);
+  left: var(--space-xl);
+  z-index: 1150;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  background: rgba(20, 24, 31, 0.78);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out-expo);
+  box-shadow: var(--shadow-md);
+}
+.map-poi-btn:hover {
+  color: var(--color-text-primary);
+  background: rgba(243, 236, 225, 0.08);
+  border-color: var(--color-accent);
+}
+.map-poi-btn__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.625rem;
+  font-weight: 600;
+}
+
 .map-navbar__btn {
   position: relative;
   display: inline-flex;
@@ -480,13 +546,15 @@ function onTripsClick(): void {
   z-index: 1100;
   width: 360px;
   max-height: calc(100vh - var(--space-xl) - 56px - var(--space-xl));
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   border-radius: var(--radius-xl);
 }
 
 /* Fill the panel — both ItineraryTimeline and TripListDrawer */
 .map-panel :deep(.itin),
-.map-panel :deep(.trip-drawer) {
+.map-panel :deep(.trip-drawer),
+.map-panel :deep(.poi-select-panel) {
   display: flex;
   flex-direction: column;
   width: 100% !important;

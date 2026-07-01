@@ -120,8 +120,13 @@ export const useMapStore = defineStore("map", () => {
   const activeDay = ref<number>(0); // 0 = all days, 1+ = specific day
   const timelineOpen = ref<boolean>(true);
 
+  // ── POI selection for planning ─────────────────────────────────────────────
+  const selectedPoiIds = ref<Set<string>>(new Set());
+  const poiPanelOpen = ref(false);
+
   // ── Getters ────────────────────────────────────────────────────────────────
   const poiCount = computed(() => pois.value.length);
+  const selectedPoiCount = computed(() => selectedPoiIds.value.size);
   const hasSelection = computed(() => selectedPOI.value !== null);
   const hasPlan = computed(() => planSummary.value !== null);
 
@@ -213,6 +218,7 @@ export const useMapStore = defineStore("map", () => {
     pois.value = [];
     routes.value = [];
     selectedPOI.value = null;
+    selectedPoiIds.value = new Set();
     center.value = null;
     planSummary.value = null;
     activeDay.value = 0;
@@ -234,6 +240,43 @@ export const useMapStore = defineStore("map", () => {
     activeDay.value = day;
   }
 
+  // -- POI selection helpers ---------------------------------------------------
+
+  function togglePoiSelection(poiId: string): void {
+    const next = new Set(selectedPoiIds.value);
+    if (next.has(poiId)) {
+      next.delete(poiId);
+    } else {
+      next.add(poiId);
+    }
+    selectedPoiIds.value = next;
+  }
+
+  function isPoiSelected(poiId: string): boolean {
+    return selectedPoiIds.value.has(poiId);
+  }
+
+  function selectAllPois(): void {
+    selectedPoiIds.value = new Set(pois.value.map((p) => String(p.id)));
+  }
+
+  function deselectAllPois(): void {
+    selectedPoiIds.value = new Set();
+  }
+
+  function getSelectedPois(): POI[] {
+    const ids = selectedPoiIds.value;
+    return pois.value.filter((p) => ids.has(String(p.id)));
+  }
+
+  function setPoiPanelOpen(open: boolean): void {
+    poiPanelOpen.value = open;
+  }
+
+  function togglePoiPanel(): void {
+    poiPanelOpen.value = !poiPanelOpen.value;
+  }
+
   function toggleTimeline(): void {
     timelineOpen.value = !timelineOpen.value;
   }
@@ -248,6 +291,8 @@ export const useMapStore = defineStore("map", () => {
     pois,
     routes,
     selectedPOI,
+    selectedPoiIds,
+    poiPanelOpen,
     center,
     zoom,
     planSummary,
@@ -255,6 +300,7 @@ export const useMapStore = defineStore("map", () => {
     timelineOpen,
     // getters
     poiCount,
+    selectedPoiCount,
     hasSelection,
     hasPlan,
     availableDays,
@@ -274,5 +320,12 @@ export const useMapStore = defineStore("map", () => {
     setActiveDay,
     toggleTimeline,
     closeTimeline,
+    togglePoiSelection,
+    isPoiSelected,
+    selectAllPois,
+    deselectAllPois,
+    getSelectedPois,
+    setPoiPanelOpen,
+    togglePoiPanel,
   };
 });
