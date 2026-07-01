@@ -112,11 +112,12 @@ async def optimize_route(
     order, _ = solve_tsp(work_pois, dist_matrix)
     ordered = [work_pois[i] for i in order]
 
-    # If we added a virtual start, remove it and re-order
+    # If we added a virtual start, remove it from the ordered list
     if start_lng is not None and start_lat is not None:
-        start_idx = next((i for i, p in enumerate(ordered) if p.get("name") == "起点"), None)
-        if start_idx is not None:
-            ordered = ordered[start_idx + 1:] + ordered[:start_idx]
+        # Remove the virtual start POI; the TSP already decided where to begin
+        ordered = [p for p in ordered if p.get("name") != "起点"]
+        if not ordered:
+            ordered = [work_pois[0]]
 
     # ── Phase 2: Amap waypoint API for polyline ─────────────────────────
     if len(ordered) >= 2:
