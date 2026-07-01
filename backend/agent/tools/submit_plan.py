@@ -119,10 +119,13 @@ async def submit_plan(
 ) -> dict[str, Any]:
     """提交并验证每日行程计划。
 
-    在完成行程规划后调用。系统会校验：
+    提交后系统会**自动**对每天调用高德驾车路径规划，获取真实道路
+    polyline、最优访问顺序、真实距离和时间。LLM 无需手动调用 plan_day_route。
+
+    校验规则：
     - POI 不重复（同一 POI 只能出现一次）
     - 每天至少 1 个 POI
-    - 每天总时长不超过 600 分钟（10 小时）
+    - 每天总时长不超过 840 分钟（14 小时）
     - 交通时间占比合理（软性提醒）
 
     校验通过后，行程会被推送到地图上展示。
@@ -142,7 +145,38 @@ async def submit_plan(
               "total_transit_min": 35
             }
     """
-    plan = {"city": city, "days": days, "daily_plans": daily_plans}
+    # ── Auto-route each day via Amap waypoint API ──────────────────────
+    from agent.tools import get_amap
+    from agent.tools.tsp_solver import solve_tsp
+
+    enriched_plans: list[dict[str, Any]] = []
+    for dp in daily_plans:
+        pois = dp.get("pois", [])
+        if len(pois) >= 2:
+            # TSP sort + Amap waypoint route
+            try:
+                order, _ = solve_tsp(pois)
+                ordered = [pois[i] for i in order]
+                amap = get_amap()
+                origin = (ordered[0]["lng"], ordered[0]["lat"])
+                destination = (ordered[-1]["lng"], ordered[-1]["lat"])
+                wps = None
+                if len(ordered) > 2:
+                    wps = [(p["lng"], p["lat"]) for p in ordered[1:-1]]
+                route = await amap.plan_route_with_waypoints(
+                    origin=origin, destination=destination, waypoints=wps, mode="driving",
+                )
+                dp["pois"] = ordered
+                dp["total_distance_km"] = route.get("distance_km", 0)
+                dp["total_transit_min"] = route.get("duration_min", 0)
+                dp["polyline"] = route.get("polyline", "")
+                dp["segments"] = route.get("segments", [])
+            except Exception:
+                # fallback: keep original order + haversine segments
+                _fallback_segments(pois, dp)
+        enriched_plans.append(dp)
+
+    plan = {"city": city, "days": days, "daily_plans": enriched_plans}
     issues = _validate_plan(plan)
 
     if issues:
@@ -161,5 +195,27 @@ async def submit_plan(
         "status": "accepted",
         "city": city,
         "days": days,
-        "daily_plans": daily_plans,
+        "daily_plans": enriched_plans,
     }
+
+
+def _fallback_segments(pois: list[dict], dp: dict) -> None:
+    """Compute haversine segments when Amap API is unavailable."""
+    import math
+    def _h(p1, p2):
+        r = 6371.0
+        dlat = math.radians(p2["lat"] - p1["lat"])
+        dlng = math.radians(p2["lng"] - p1["lng"])
+        a = math.sin(dlat/2)**2 + math.cos(math.radians(p1["lat"])) * math.cos(math.radians(p2["lat"])) * math.sin(dlng/2)**2
+        return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+
+    segs = []
+    total_d = 0.0
+    for i in range(len(pois)-1):
+        d = _h(pois[i], pois[i+1])
+        segs.append({"distance_km": round(d,2), "duration_min": round(d*3)})
+        total_d += d
+    dp["total_distance_km"] = round(total_d, 2)
+    dp["total_transit_min"] = round(total_d * 3)
+    dp["polyline"] = ""
+    dp["segments"] = segs

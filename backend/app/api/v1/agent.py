@@ -218,20 +218,16 @@ def _build_route_result_event(
                 "meal_type": ref.get("meal_type"),
             })
 
-        # Look up cached route data (polyline, segments, mode) from plan_day_route
-        day_poi_ids = [str(p.get("id") or p.get("name", "")) for p in day_pois]
-        fp = "|".join(day_poi_ids)
-        cached = _route_cache.get(fp, {})
-
+        # Polyline/segments now come from submit_plan directly (auto-routed)
         formatted_plans.append({
             "day": day_plan.get("day", 1),
             "day_title": day_plan.get("day_theme", f"第{day_plan.get('day', 1)}天"),
             "pois": day_pois,
-            "total_distance_km": cached.get("total_distance_km") or day_plan.get("total_distance_km", 0),
+            "total_distance_km": day_plan.get("total_distance_km", 0),
             "total_duration_min": day_plan.get("total_duration_min", 0),
             "total_transit_min": day_plan.get("total_transit_min", 0),
-            "polyline": cached.get("polyline", ""),
-            "segments": cached.get("segments", []),
+            "polyline": day_plan.get("polyline", ""),
+            "segments": day_plan.get("segments", []),
         })
 
     return _format_sse_event("message", {
