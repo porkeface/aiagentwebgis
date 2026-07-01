@@ -20,7 +20,6 @@ const tripStore = useTripStore()
 
 // ── Reactive State ───────────────────────────────────────────────────────────
 const activePanel = ref<'trips' | null>(null)
-const selectedMode = ref<string>('driving')
 const pois = computed(() => mapStore.pois)
 const routes = computed(() => mapStore.routes)
 const hasRoutes = computed(() => routes.value.length > 0)
@@ -325,9 +324,9 @@ function onPOIsClick(): void {
         v-for="m in [{key:'driving',label:'驾车',icon:'M5 12h14M13 5l7 7-7 7'},{key:'walking',label:'步行',icon:'M12 2v20M12 2L8 6M12 2l4 4'},{key:'bicycling',label:'骑行',icon:'M5 20a2 2 0 100-4 2 2 0 000 4zM19 8a2 2 0 100-4 2 2 0 000 4zM19 8l-7 4-7-4'},{key:'transit',label:'公交',icon:'M4 15l4-8h8l4 8M10 14h4M8 19v2M16 19v2'}]"
         :key="m.key"
         class="mode-selector__btn"
-        :class="{ active: selectedMode === m.key }"
+        :class="{ active: mapStore.transportMode === m.key }"
         :title="m.label"
-        @click="selectedMode = m.key"
+        @click="mapStore.setTransportMode(m.key)"
       >
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path :d="m.icon" />
