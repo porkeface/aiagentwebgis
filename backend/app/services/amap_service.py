@@ -20,8 +20,8 @@ AMAP_V5_BASE_URL = "https://restapi.amap.com/v5"
 VALID_ROUTE_MODES = frozenset({"walking", "driving", "bicycling", "transit"})
 
 # Retry configuration for Amap API
-AMAP_MAX_RETRIES = 3
-AMAP_RETRY_BACKOFF_BASE = 1.5  # seconds
+AMAP_MAX_RETRIES = 4
+AMAP_RETRY_BACKOFF_BASE = 2.0  # seconds
 
 
 def _first_photo(poi: dict[str, Any]) -> str | None:
