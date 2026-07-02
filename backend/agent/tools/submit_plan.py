@@ -261,9 +261,26 @@ def _fallback_segments(pois: list[dict[str, Any]], dp: dict[str, Any]) -> None:
 
 
 async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
-    """TSP sort a single day's POIs and fetch Amap waypoint route."""
+    """TSP sort a single day's POIs and fetch per-leg routes.
+
+    Each adjacent POI pair gets its own route: walking for short hops
+    (≤2 km straight-line), driving for longer legs. This avoids the
+    "drive 3 km to go 300 m" problem when POIs are close together.
+    """
+    import math
+
     from agent.tools import get_amap
     from agent.tools.tsp_solver import solve_tsp
+
+    # Threshold: POIs within 2 km straight-line → walk, not drive
+    WALK_THRESHOLD_KM = 2.0
+
+    def _straight_km(a: dict[str, Any], b: dict[str, Any]) -> float:
+        dlat = math.radians(b["lat"] - a["lat"])
+        dlng = math.radians(b["lng"] - a["lng"])
+        lat_mid = math.radians((a["lat"] + b["lat"]) / 2)
+        dx = dlng * math.cos(lat_mid)
+        return math.sqrt(dlat**2 + dx**2) * 6371.0
 
     pois = dp.get("pois", [])
     result: dict[str, Any] = {
@@ -281,20 +298,59 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
         result["pois"] = ordered
         try:
             amap = get_amap()
-            origin = (ordered[0]["lng"], ordered[0]["lat"])
-            destination = (ordered[-1]["lng"], ordered[-1]["lat"])
-            wps = None
-            if len(ordered) > 2:
-                wps = [(p["lng"], p["lat"]) for p in ordered[1:-1]]
-            route = await amap.plan_route_with_waypoints(
-                origin=origin, destination=destination, waypoints=wps, mode="driving",
-            )
-            result["total_distance_km"] = route.get("distance_km", 0)
-            result["total_transit_min"] = route.get("duration_min", 0)
-            result["polyline"] = route.get("polyline", "")
-            result["segments"] = route.get("segments", [])
+            total_distance = 0.0
+            total_transit = 0.0
+            all_polylines: list[str] = []
+            all_segments: list[dict[str, Any]] = []
+
+            for i in range(len(ordered) - 1):
+                a, b = ordered[i], ordered[i + 1]
+                origin = (a["lng"], a["lat"])
+                destination = (b["lng"], b["lat"])
+                dist_km = _straight_km(a, b)
+                mode = "walking" if dist_km <= WALK_THRESHOLD_KM else "driving"
+
+                if mode == "walking" and dist_km < 0.05:
+                    # Same building / very close — skip API, just walk 1 min
+                    all_segments.append({"distance_km": round(dist_km, 2), "duration_min": 1})
+                    continue
+
+                try:
+                    route = await amap.plan_route_with_waypoints(
+                        origin=origin, destination=destination, mode=mode,
+                    )
+                except Exception:
+                    _fallback_leg(all_segments, dist_km)
+                    continue
+
+                seg = route.get("segments", [])
+                if seg:
+                    all_segments.extend(seg)
+                else:
+                    all_segments.append({
+                        "distance_km": route.get("distance_km", 0),
+                        "duration_min": route.get("duration_min", 0),
+                    })
+                poly = route.get("polyline", "")
+                if poly:
+                    all_polylines.append(poly)
+                total_distance += route.get("distance_km", 0)
+                total_transit += route.get("duration_min", 0)
+
+            result["total_distance_km"] = round(total_distance, 2)
+            result["total_transit_min"] = round(total_transit, 2)
+            result["polyline"] = ";".join(all_polylines)
+            result["segments"] = all_segments
         except Exception:
             _fallback_segments(ordered, result)
     else:
         result["pois"] = list(pois)
     return result
+
+
+def _fallback_leg(segments: list[dict[str, Any]], straight_km: float) -> None:
+    """Haversine-based leg when Amap call fails for a single pair."""
+    segments.append({
+        "distance_km": round(straight_km, 2),
+        "duration_min": round(straight_km * 12, 1),  # walking pace ~5 km/h
+    })
