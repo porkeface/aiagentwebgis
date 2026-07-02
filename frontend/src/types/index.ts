@@ -4,6 +4,7 @@ export interface POI {
   name: string;
   category: string;
   address: string | null;
+  city?: string;
   lng: number;
   lat: number;
   rating: number | null;

@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Any, Literal
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -192,6 +193,35 @@ async def classify_intent_node(
 
 
 # ---------------------------------------------------------------------------
+# Pre-selected POI detection (user selected POIs on the map)
+# ---------------------------------------------------------------------------
+
+_PRESELECTED_POI_RE = re.compile(
+    r"-\s*(\S+?)\s*\|\s*id:(\S+?)\s*\|\s*lng:([\d.-]+)\s*\|\s*lat:([\d.-]+)"
+)
+
+
+def _parse_preselected_pois(user_message: str) -> list[dict[str, Any]]:
+    """Extract pre-selected POIs from a "plan with these POIs" user message."""
+    pois: list[dict[str, Any]] = []
+    for m in _PRESELECTED_POI_RE.finditer(user_message):
+        name, pid, lng, lat = m.group(1), m.group(2), m.group(3), m.group(4)
+        try:
+            pois.append({
+                "name": name.strip(),
+                "id": pid.strip(),
+                "poi_id": pid.strip(),
+                "lng": float(lng),
+                "lat": float(lat),
+                "rating": 4.0,
+                "score": 100,
+            })
+        except ValueError:
+            continue
+    return pois
+
+
+# ---------------------------------------------------------------------------
 # Planning pipeline node (fixed, deterministic — no LLM in the loop)
 # ---------------------------------------------------------------------------
 
@@ -228,6 +258,16 @@ async def planning_pipeline_node(
         days = 7  # cap at 7 days to avoid excessive API calls
 
     logger.info("Planning pipeline started: city=%s, days=%d", city, days)
+
+    # ── Pre-selected POIs short-circuit ────────────────────────────────────
+    preselected_pois = _parse_preselected_pois(user_content)
+    if preselected_pois and len(preselected_pois) >= 2:
+        logger.info("Pre-selected POIs detected: %d POIs, skipping search", len(preselected_pois))
+        return await _plan_with_preselected_pois(
+            preselected_pois=preselected_pois,
+            city=city,
+            writer=writer,
+        )
 
     # ── Step 0: Xiaohongshu guide search ──────────────────────────────────
     guide_info: dict[str, Any] = {"spots": [], "daily_groups": {}, "tips": []}
@@ -498,6 +538,109 @@ async def planning_pipeline_node(
     })
 
     # Store plan for the summary node
+    return {
+        "plan_result": plan_result,
+        "plan_city": city,
+        "plan_days": days,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pre-selected POIs fast path (user picked POIs on the map)
+# ---------------------------------------------------------------------------
+
+
+async def _plan_with_preselected_pois(
+    preselected_pois: list[dict[str, Any]],
+    city: str,
+    writer: StreamWriter,
+) -> dict[str, Any]:
+    """Plan a trip directly from user-selected POIs — skip search entirely.
+
+    Steps:
+    1. Estimate visit durations
+    2. Auto-determine days from POI count + spread
+    3. Geo-partition into daily clusters
+    4. Route each day via Amap
+    5. Validate and submit
+    """
+    from agent.tools.submit_plan import route_one_day, submit_plan as submit_plan_fn
+    from agent.tools.geo_partition import geo_partition as geo_partition_fn
+    from app.services.duration_estimator import estimate_poi_duration_from_dict, estimate_daily_capacity
+
+    pois = preselected_pois
+    n = len(pois)
+
+    # Estimate visit durations
+    for poi in pois:
+        poi["visit_duration_min"] = estimate_poi_duration_from_dict(poi)
+
+    # Auto-determine days: 2 POIs → 1 day, 3-4 → 2 days, 5+ → 3 days
+    if n <= 2:
+        days = 1
+    elif n <= 4:
+        days = 2
+    else:
+        days = 3
+
+    # Cap POIs per day
+    dynamic_per_day = estimate_daily_capacity([p["visit_duration_min"] for p in pois])
+    max_per_day = min(dynamic_per_day + 1, 8)
+
+    logger.info("Pre-selected POI fast path: %d POIs, %d days, max %d/day", n, days, max_per_day)
+
+    writer({"type": "searching", "data": {"message": f"正在用已选的 {n} 个POI规划行程..."}})
+
+    # Compute center
+    lngs = [p["lng"] for p in pois if isinstance(p.get("lng"), (int, float))]
+    lats = [p["lat"] for p in pois if isinstance(p.get("lat"), (int, float))]
+    center_lng = sum(lngs) / len(lngs) if lngs else 116.397
+    center_lat = sum(lats) / len(lats) if lats else 39.908
+
+    # Geo-partition
+    writer({"type": "clustering", "data": {"message": f"正在按地理分区规划{days}天行程..."}})
+
+    clusters = await geo_partition_fn.ainvoke({
+        "pois": pois,
+        "n_days": days,
+        "center_lng": center_lng,
+        "center_lat": center_lat,
+    }, config={})
+
+    # Route each day
+    daily_plans: list[dict[str, Any]] = []
+    for cluster in clusters:
+        day_num = cluster.get("day", len(daily_plans) + 1)
+        day_pois = cluster.get("pois", [])[:max_per_day]
+        if not day_pois:
+            continue
+
+        writer({
+            "type": "day_routing",
+            "data": {"day": day_num, "message": f"正在规划第{day_num}天路线..."},
+        })
+
+        dp = {"day": day_num, "pois": day_pois}
+        routed = await route_one_day(dp)
+        daily_plans.append(routed)
+
+    if not daily_plans:
+        writer({"type": "error", "data": {"message": "未能生成行程计划"}})
+        return {"messages": [AIMessage(content="抱歉，行程规划失败，请重试。")]}
+
+    # Skip Critic validation — user hand-picked these POIs
+    # Validate and submit
+    plan_result = await submit_plan_fn.ainvoke({
+        "city": city,
+        "days": days,
+        "daily_plans": daily_plans,
+    }, config={})
+
+    writer({
+        "type": "route_result",
+        "data": {"daily_plans": plan_result.get("daily_plans", daily_plans)},
+    })
+
     return {
         "plan_result": plan_result,
         "plan_city": city,

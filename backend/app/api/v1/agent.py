@@ -137,6 +137,7 @@ def _build_poi_result_event(registry: POIRegistry) -> str | None:
             "name": p.get("name", ""),
             "category": p.get("category", ""),
             "address": p.get("address"),
+            "city": p.get("city"),
             "lng": p.get("lng", 0.0),
             "lat": p.get("lat", 0.0),
             "rating": p.get("rating"),
