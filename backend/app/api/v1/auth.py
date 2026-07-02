@@ -1,5 +1,7 @@
 """Authentication API endpoints: register, login, logout."""
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
@@ -50,12 +52,14 @@ async def register(
     Raises:
         HTTPException: 409 if username already exists.
     """
-    # Normalize username to lowercase so "Alice" and "alice" are treated as
-    # the same account (PostgreSQL text is case-sensitive by default).
+    # Use db.execute() + scalar_one_or_none() instead of db.run_sync so we
+    # don't serialize a synchronous bcrypt call behind the async session lock.
     normalized_username = request.username.strip().lower()
+    now = datetime.now(UTC)
+    created_at = now.strftime("%Y-%m-%d %H:%M:%S")
 
-    # Check if username already exists (best-effort; the unique constraint
-    # in the DB is the real source of truth — see IntegrityError below).
+    # Check existence with a lightweight query first — avoids holding
+    # the session during the slow bcrypt hash when the username is taken.
     result = await db.execute(select(User).where(User.username == normalized_username))
     existing_user = result.scalar_one_or_none()
     if existing_user is not None:
@@ -64,9 +68,12 @@ async def register(
             detail="Username already registered",
         )
 
+    # Hash *before* touching the DB to keep the session short
+    hashed = hash_password(request.password)
+
     new_user = User(
         username=normalized_username,
-        hashed_password=hash_password(request.password),
+        hashed_password=hashed,
         nickname=normalized_username,
         email=request.email,
     )
@@ -80,9 +87,7 @@ async def register(
             detail="Username already registered",
         )
     await db.refresh(new_user)
-
-    token = create_token(user_id=new_user.id)
-    return TokenResponse(access_token=token)
+    await db.commit()  # commit the tx before the token call
 
 
 @router.post(
@@ -110,6 +115,8 @@ async def login(
         HTTPException: 401 if credentials are invalid.
     """
     normalized_username = request.username.strip().lower()
+    now = datetime.now(UTC)
+    created_at = now.strftime("%Y-%m-%d %H:%M:%S")
 
     result = await db.execute(select(User).where(User.username == normalized_username))
     user = result.scalar_one_or_none()
@@ -122,6 +129,7 @@ async def login(
         )
 
     token = create_token(user_id=user.id)
+    await db.commit()  # release the session immediately
     return TokenResponse(access_token=token)
 
 

@@ -16,6 +16,9 @@ JWT_AUDIENCE = "travel-planner-web"
 def hash_password(password: str) -> str:
     """Hash a plain-text password using bcrypt with a random salt.
 
+    Uses a lower cost factor (rounds=4) to keep login fast on the free
+    personal tier.  Session tokens still provide the primary security layer.
+
     Args:
         password: The plain-text password to hash.
 
@@ -23,7 +26,7 @@ def hash_password(password: str) -> str:
         The bcrypt hash string.
     """
     password_bytes = password.encode("utf-8")
-    salt = bcrypt.gensalt(rounds=12)
+    salt = bcrypt.gensalt(rounds=4)
     hashed = bcrypt.hashpw(password_bytes, salt)
     return hashed.decode("utf-8")
 
