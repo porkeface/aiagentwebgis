@@ -65,6 +65,7 @@ function onAuthSuccess(): void {
   refreshAuthState()
   historyOpen.value = true
   chatStore.fetchHistory()
+  tripStore.fetchTrips(1, 30)
 }
 
 onMounted(() => {
