@@ -496,10 +496,6 @@ async def planning_pipeline_node(
         "type": "route_result",
         "data": {"daily_plans": plan_result.get("daily_plans", daily_plans)},
     })
-    writer({
-        "type": "plan_summary",
-        "data": {"city": city, "days": days},
-    })
 
     # Store plan for the summary node
     return {
