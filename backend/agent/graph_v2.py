@@ -1,8 +1,8 @@
-"""Graph v2 — intent router + fixed planning pipeline.
+"""Graph v2 — intent router + LLM-driven planning pipeline.
 
 Adds a ``classify_intent`` node before the ReAct loop.  For trip planning
-requests the graph takes a deterministic pipeline path that avoids the
-expensive LLM-in-the-loop tool-calling cycle.
+requests the graph takes an LLM-enhanced pipeline with dynamic search
+strategy, POI alignment, Critic validation, and duration-based capacity.
 
 Graph topology::
 
