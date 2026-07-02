@@ -81,5 +81,4 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
 
-    await db.commit()  # release session immediately
     return user_id

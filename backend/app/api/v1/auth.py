@@ -87,12 +87,13 @@ async def register(
             detail="Username already registered",
         )
     await db.refresh(new_user)
-    await db.commit()  # commit the tx before the token call
+
+    token = create_token(user_id=new_user.id)
+    return TokenResponse(access_token=token)
 
 
 @router.post(
     "/login",
-    response_model=TokenResponse,
     summary="Login user",
     description="Authenticate with username/password and receive a JWT token. Returns 401 on invalid credentials.",
 )
@@ -129,7 +130,6 @@ async def login(
         )
 
     token = create_token(user_id=user.id)
-    await db.commit()  # release the session immediately
     return TokenResponse(access_token=token)
 
 
