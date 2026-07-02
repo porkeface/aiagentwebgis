@@ -432,9 +432,16 @@ async def _event_generator(
                     custom_data = event.get("data", {})
 
                     if custom_name == "intent_detected":
+                        # Also forward the intent data so the frontend can
+                        # display the city/days that were extracted
                         yield _format_sse_event("message", {
-                            "type": "thinking",
-                            "data": {"content": "AI 正在分析您的需求..."},
+                            "type": "intent_detected",
+                            "data": {
+                                "content": "AI 正在分析您的需求...",
+                                "intent": custom_data.get("intent", "unknown"),
+                                "city": custom_data.get("city"),
+                                "days": custom_data.get("days"),
+                            },
                         })
 
                     elif custom_name == "searching":
