@@ -267,7 +267,18 @@ class AmapService:
         if category:
             params["types"] = category
 
-        data = await self._request("place/text", params)
+        max_retries = AMAP_MAX_RETRIES + 3  # extra retries for parallel search calls
+        for attempt in range(max_retries):
+            try:
+                data = await self._request("place/text", params)
+                break
+            except ValueError as e:
+                if "CUQPS" in str(e) and attempt < max_retries - 1:
+                    wait = AMAP_RETRY_BACKOFF_BASE * (2 ** attempt)
+                    logger.warning("search_pois QPS retry %d/%d in %.1fs", attempt + 1, max_retries, wait)
+                    await asyncio.sleep(wait)
+                    continue
+                raise
 
         results: list[dict[str, Any]] = []
         for poi in data.get("pois", []):
