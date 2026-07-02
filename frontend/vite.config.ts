@@ -5,6 +5,7 @@ import { fileURLToPath, URL } from 'node:url'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue()],
+  envDir: '..',  // 从项目根目录 D:\codeProject\aiagentwebgis\.env 加载 VITE_ 变量
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

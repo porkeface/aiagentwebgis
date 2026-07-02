@@ -172,6 +172,11 @@ def create_app() -> FastAPI:
             await close_amap()
         except Exception:
             logger.exception("Failed to close AmapService on shutdown")
+        try:
+            from app.services.redis_client import close_redis
+            await close_redis()
+        except Exception:
+            logger.exception("Failed to close Redis on shutdown")
 
     @app.get("/health")
     async def health_check() -> dict[str, str]:

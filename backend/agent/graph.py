@@ -4,9 +4,9 @@ Replaces ``create_react_agent`` with explicit ``agent_node`` and ``tools_node``
 connected by a conditional edge.  Key improvements over the prebuilt version:
 
 * ``tool_call_count`` only increments on actual tool invocations (LLM chatter is free).
-* Multiple ``plan_day_route`` calls within one turn are dispatched in parallel
+* Multiple parallelizable tool calls within one turn are dispatched in parallel
   via ``asyncio.gather`` with per-call timeouts.
-* A ``stream_writer`` preserves per-token text streaming to the frontend.
+* ``agent_node`` streams per-token text for responsive SSE rendering.
 """
 
 from __future__ import annotations
@@ -36,8 +36,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 MAX_TOOL_CALLS = 25
-PLAN_DAY_ROUTE_TIMEOUT_SEC = 30
-PARALLELIZABLE_TOOLS = frozenset({"plan_day_route"})
+AGENT_LLM_TIMEOUT_SEC = 60
+TOOL_TIMEOUT_SEC = 30
+PARALLELIZABLE_TOOLS = frozenset({
+    "search_pois", "search_nearby", "geocode", "get_weather", "score_pois",
+})
 
 # ---------------------------------------------------------------------------
 # Module-level cache
@@ -63,6 +66,8 @@ def _get_model() -> ChatOpenAI:
         api_key=settings.dashscope_api_key,
         temperature=0.0,
         streaming=True,
+        timeout=60,
+        max_retries=1,
     )
     return model.bind_tools(AGENT_TOOLS)
 
@@ -127,68 +132,6 @@ def _merge_tool_call_chunks(
 
 
 # ---------------------------------------------------------------------------
-# Fallback helpers
-# ---------------------------------------------------------------------------
-
-
-def _haversine_km(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
-    """Compute straight-line distance in km between two points."""
-    import math
-
-    r = 6371.0
-    d_lng = math.radians(lng2 - lng1)
-    d_lat = math.radians(lat2 - lat1)
-    a = (
-        math.sin(d_lat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(d_lng / 2) ** 2
-    )
-    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-
-def _haversine_fallback(pois: list[dict[str, Any]]) -> dict[str, Any]:
-    """Fallback route estimation when Amap API times out."""
-    if len(pois) <= 1:
-        return {
-            "ordered_pois": [
-                {"name": p.get("name", "?"), "lng": p.get("lng", 0), "lat": p.get("lat", 0)}
-                for p in pois
-            ],
-            "total_distance_km": 0,
-            "total_duration_min": 0,
-            "polyline": "",
-            "segments": [],
-        }
-
-    total = 0.0
-    segments = []
-    for i in range(len(pois) - 1):
-        d = _haversine_km(
-            pois[i].get("lng", 0), pois[i].get("lat", 0),
-            pois[i + 1].get("lng", 0), pois[i + 1].get("lat", 0),
-        )
-        segments.append({
-            "from": pois[i].get("name", "?"),
-            "to": pois[i + 1].get("name", "?"),
-            "distance_km": round(d, 2),
-            "duration_min": round(d * 12),
-        })
-        total += d
-
-    return {
-        "ordered_pois": [
-            {"name": p.get("name", "?"), "lng": p.get("lng", 0), "lat": p.get("lat", 0)}
-            for p in pois
-        ],
-        "total_distance_km": round(total, 2),
-        "total_duration_min": round(total * 12),
-        "polyline": "",
-        "segments": segments,
-    }
-
-
-# ---------------------------------------------------------------------------
 # Graph nodes
 # ---------------------------------------------------------------------------
 
@@ -199,6 +142,8 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> dict[str, Any
     Uses model.astream() so LangGraph emits on_chat_model_stream events
     for per-token SSE text streaming.  LangChain 1.0 does not export
     chunk_messages_to_message, so we manually merge tool_call chunks.
+
+    Timeout is enforced by ChatOpenAI(timeout=60) — see _get_model().
     """
     model = _get_model()
     system_prompt = SystemMessage(content=AGENT_SYSTEM_PROMPT)
@@ -274,8 +219,17 @@ async def tools_node(state: AgentState, config: RunnableConfig) -> dict[str, Any
             continue
 
         try:
-            result = await tool_fn.ainvoke(tc["args"], config)
+            result = await asyncio.wait_for(
+                tool_fn.ainvoke(tc["args"], config),
+                timeout=TOOL_TIMEOUT_SEC,
+            )
             tool_messages.append(_to_tool_message(result, tc["name"], call_id))
+        except asyncio.TimeoutError:
+            logger.warning("Tool %s timed out after %ds", tc["name"], TOOL_TIMEOUT_SEC)
+            tool_messages.append(ToolMessage(
+                content=json.dumps({"error": f"工具 '{tc['name']}' 执行超时"}),
+                tool_call_id=call_id,
+            ))
         except Exception as exc:
             logger.exception("Tool %s failed", tc["name"])
             tool_messages.append(ToolMessage(
@@ -283,22 +237,23 @@ async def tools_node(state: AgentState, config: RunnableConfig) -> dict[str, Any
                 tool_call_id=call_id,
             ))
 
-    # --- Parallel calls (only plan_day_route) -------------------------------
+    # --- Parallel calls ----------------------------------------------------
     async def _call_parallel(call_id: str, tc: dict[str, Any]) -> ToolMessage:
         tool_fn = tool_map[tc["name"]]
         try:
             result = await asyncio.wait_for(
                 tool_fn.ainvoke(tc["args"], config),
-                timeout=PLAN_DAY_ROUTE_TIMEOUT_SEC,
+                timeout=TOOL_TIMEOUT_SEC,
             )
             return _to_tool_message(result, tc["name"], call_id)
         except asyncio.TimeoutError:
-            logger.warning("plan_day_route timed out after %ds, using haversine fallback",
-                           PLAN_DAY_ROUTE_TIMEOUT_SEC)
-            fallback = _haversine_fallback(tc["args"].get("pois", []))
-            return _to_tool_message(fallback, tc["name"], call_id)
+            logger.warning("Tool %s timed out after %ds", tc["name"], TOOL_TIMEOUT_SEC)
+            return ToolMessage(
+                content=json.dumps({"error": f"工具 '{tc['name']}' 执行超时"}),
+                tool_call_id=call_id,
+            )
         except Exception as exc:
-            logger.exception("plan_day_route failed")
+            logger.exception("Tool %s failed", tc["name"])
             return ToolMessage(
                 content=json.dumps({"error": str(exc)}),
                 tool_call_id=call_id,

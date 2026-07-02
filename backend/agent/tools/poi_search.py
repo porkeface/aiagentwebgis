@@ -32,9 +32,9 @@ async def search_pois(
     amap = get_amap()
     try:
         return await amap.search_pois(city=city, category=category, keyword=keyword or None)
-    except Exception as e:
-        logger.error("search_pois failed for %s/%s: %s", city, category, e)
-        return [{"error": str(e), "city": city, "category": category}]
+    except Exception:
+        logger.exception("search_pois failed for %s/%s", city, category)
+        return [{"error": "POI搜索失败", "city": city, "category": category}]
 
 
 @tool
@@ -59,6 +59,6 @@ async def search_nearby(
     amap = get_amap()
     try:
         return await amap.search_nearby(lng=lng, lat=lat, category=category, radius=radius)
-    except Exception as e:
-        logger.error("search_nearby failed for (%s,%s): %s", lng, lat, e)
-        return [{"error": str(e), "lng": lng, "lat": lat, "category": category}]
+    except Exception:
+        logger.exception("search_nearby failed for (%s,%s)", lng, lat)
+        return [{"error": "POI搜索失败", "lng": lng, "lat": lat}]

@@ -21,7 +21,7 @@ VALID_ROUTE_MODES = frozenset({"walking", "driving", "bicycling", "transit"})
 
 # Retry configuration for Amap API
 AMAP_MAX_RETRIES = 3
-AMAP_RETRY_BACKOFF_BASE = 0.5  # seconds
+AMAP_RETRY_BACKOFF_BASE = 1.5  # seconds
 
 
 def _first_photo(poi: dict[str, Any]) -> str | None:
@@ -77,6 +77,61 @@ def _extract_description(poi: dict[str, Any]) -> str | None:
         intro = deep_info.get("intro")
         if isinstance(intro, str) and intro.strip():
             return intro.strip()
+    return None
+
+
+def _extract_opentime(poi: dict[str, Any]) -> str | None:
+    """Extract opening hours from biz_ext."""
+    biz_ext = poi.get("biz_ext")
+    if isinstance(biz_ext, dict):
+        ot = biz_ext.get("opentime_info") or biz_ext.get("opentime")
+        if isinstance(ot, str) and ot.strip():
+            return ot.strip()
+    deep_info = poi.get("deep_info")
+    if isinstance(deep_info, dict):
+        ot = deep_info.get("opentime_info") or deep_info.get("opentime")
+        if isinstance(ot, str) and ot.strip():
+            return ot.strip()
+    return None
+
+
+def _extract_cost(poi: dict[str, Any]) -> str | None:
+    """Extract ticket/cost info from biz_ext."""
+    biz_ext = poi.get("biz_ext")
+    if isinstance(biz_ext, dict):
+        cost = biz_ext.get("cost")
+        if isinstance(cost, str) and cost.strip():
+            return cost.strip()
+    return None
+
+
+def _extract_business_area(poi: dict[str, Any]) -> str | None:
+    """Extract business_area from biz_ext (e.g. '鼓楼区')."""
+    biz_ext = poi.get("biz_ext")
+    if isinstance(biz_ext, dict):
+        ba = biz_ext.get("business_area")
+        if isinstance(ba, str) and ba.strip():
+            return ba.strip()
+    return None
+
+
+def _extract_tags(poi: dict[str, Any]) -> list[str]:
+    """Extract tags from biz_ext (e.g. ['文化', '古迹'])."""
+    biz_ext = poi.get("biz_ext")
+    if isinstance(biz_ext, dict):
+        tags = biz_ext.get("tags")
+        if isinstance(tags, list):
+            return [str(t) for t in tags if t]
+    return []
+
+
+def _extract_importance(poi: dict[str, Any]) -> str | None:
+    """Extract importance label from biz_ext."""
+    biz_ext = poi.get("biz_ext")
+    if isinstance(biz_ext, dict):
+        imp = biz_ext.get("importance") or biz_ext.get("importance_level")
+        if isinstance(imp, str) and imp.strip():
+            return imp.strip()
     return None
 
 
@@ -157,7 +212,7 @@ class AmapService:
                     # QPS rate limit — retry with exponential backoff
                     if infocode == "10021":
                         if attempt < AMAP_MAX_RETRIES - 1:
-                            wait_time = AMAP_RETRY_BACKOFF_BASE * (3 ** attempt)
+                            wait_time = AMAP_RETRY_BACKOFF_BASE * (2 ** attempt)
                             logger.warning(
                                 "Amap QPS limit hit, retrying in %.1fs (attempt %d/%d)",
                                 wait_time, attempt + 1, AMAP_MAX_RETRIES,
@@ -247,6 +302,11 @@ class AmapService:
                     "rating": _extract_rating(poi),
                     "review_count": _extract_review_count(poi),
                     "description": _extract_description(poi),
+                    "opentime": _extract_opentime(poi),
+                    "cost": _extract_cost(poi),
+                    "business_area": _extract_business_area(poi),
+                    "tags": _extract_tags(poi),
+                    "importance": _extract_importance(poi),
                 }
             )
 
@@ -304,6 +364,11 @@ class AmapService:
                     "rating": _extract_rating(poi),
                     "review_count": _extract_review_count(poi),
                     "description": _extract_description(poi),
+                    "opentime": _extract_opentime(poi),
+                    "cost": _extract_cost(poi),
+                    "business_area": _extract_business_area(poi),
+                    "tags": _extract_tags(poi),
+                    "importance": _extract_importance(poi),
                 }
             )
 
@@ -391,6 +456,22 @@ class AmapService:
                 f"Invalid mode: {mode}. Must be one of {sorted(VALID_ROUTE_MODES)}"
             )
 
+        # Try distance cache first (driving mode only — other modes are rare)
+        if mode == "driving":
+            try:
+                from app.services.distance_cache import get_cached_distance
+                cached = await get_cached_distance(
+                    origin[0], origin[1], destination[0], destination[1], mode,
+                )
+                if cached is not None:
+                    return {
+                        "distance_km": cached[0],
+                        "duration_min": cached[1],
+                        "polyline": "",
+                    }
+            except Exception:
+                pass  # cache miss or error, continue to API
+
         params = {
             "origin": f"{origin[0]},{origin[1]}",
             "destination": f"{destination[0]},{destination[1]}",
@@ -416,11 +497,24 @@ class AmapService:
         polyline_parts = [step.get("polyline", "") for step in steps if step.get("polyline")]
         polyline = ";".join(polyline_parts)
 
-        return {
+        result = {
             "distance_km": distance_m / 1000.0,
             "duration_min": duration_s / 60.0,
             "polyline": polyline,
         }
+
+        # Write back to cache
+        if mode == "driving" and result["distance_km"] > 0:
+            try:
+                from app.services.distance_cache import set_cached_distance
+                await set_cached_distance(
+                    origin[0], origin[1], destination[0], destination[1],
+                    result["distance_km"], result["duration_min"], mode,
+                )
+            except Exception:
+                pass  # cache write is best-effort, non-critical
+
+        return result
 
     async def plan_route_with_waypoints(
         self,

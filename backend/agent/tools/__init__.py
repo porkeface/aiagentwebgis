@@ -8,21 +8,18 @@ Exports:
 from __future__ import annotations
 
 import logging
-import os
 
 from app.services.amap_service import AmapService
 
 logger = logging.getLogger(__name__)
 
 from agent.tools.poi_search import search_pois, search_nearby
-from agent.tools.geocoding import geocode, reverse_geocode
+from agent.tools.geocoding import geocode
 from agent.tools.route_planning import plan_route
 from agent.tools.spatial_analysis import score_pois
 from agent.tools.weather import get_weather
-from agent.tools.optimize_route import optimize_route
 from agent.tools.submit_plan import submit_plan
 from agent.tools.geo_partition import geo_partition
-from agent.tools.plan_day_route import plan_day_route
 
 # ---------------------------------------------------------------------------
 # Singleton AmapService factory
@@ -59,14 +56,11 @@ AGENT_TOOLS = [
     search_pois,
     search_nearby,
     plan_route,
-    optimize_route,
     score_pois,
     submit_plan,
     geocode,
-    reverse_geocode,
     get_weather,
     geo_partition,
-    plan_day_route,
 ]
 
 __all__ = [
@@ -76,12 +70,9 @@ __all__ = [
     "search_pois",
     "search_nearby",
     "plan_route",
-    "optimize_route",
     "score_pois",
     "submit_plan",
     "geocode",
-    "reverse_geocode",
     "get_weather",
     "geo_partition",
-    "plan_day_route",
 ]

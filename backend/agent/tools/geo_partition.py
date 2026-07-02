@@ -69,7 +69,22 @@ async def geo_partition(
             "day": cluster["day"],
             "zone": zone,
             "pois": [
-                {"id": p.get("id"), "name": p.get("name"), "lng": p.get("lng"), "lat": p.get("lat")}
+                {
+                    "id": p.get("id"), "name": p.get("name"),
+                    "lng": p.get("lng"), "lat": p.get("lat"),
+                    "poi_id": p.get("id"),  # for submit_plan compatibility
+                    "rating": p.get("rating"),
+                    "category": p.get("category") or p.get("type"),
+                    "visit_duration_min": p.get("visit_duration_min"),
+                    "opentime": p.get("opentime"),
+                    "cost": p.get("cost"),
+                    "business_area": p.get("business_area"),
+                    "tags": p.get("tags"),
+                    "importance": p.get("importance"),
+                    "review_count": p.get("review_count"),
+                    "address": p.get("address"),
+                    "photos": p.get("photos"),
+                }
                 for p in day_pois
             ],
         })

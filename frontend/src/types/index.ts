@@ -13,6 +13,16 @@ export interface POI {
   photo?: string;
   /** Short intro / description text */
   description?: string;
+  /** Opening hours (e.g. "09:00-17:00") */
+  opentime?: string;
+  /** Ticket cost (e.g. "60元", "免费") */
+  cost?: string;
+  /** Business district (e.g. "朝阳区") */
+  business_area?: string;
+  /** Scenic importance level (5A/4A/3A/2A/A) */
+  importance?: string;
+  /** Estimated visit duration in minutes */
+  visit_duration_min?: number;
 }
 
 // ── Trip ─────────────────────────────────────────────────────────────────────
@@ -78,7 +88,18 @@ export type SSEEventType =
   | "plan_summary"
   | "text"
   | "error"
-  | "progress";
+  | "progress"
+  | "candidates_ready"
+  | "routing"
+  | "day_routed"
+  | "validating"
+  | "scoring"
+  | "clustering"
+  | "searching"
+  | "day_routing"
+  | "critic_review"
+  | "critic_result"
+  | "intent_detected";
 
 export interface SSEEvent {
   type: SSEEventType;

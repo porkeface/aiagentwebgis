@@ -13,6 +13,8 @@ from typing import Any
 
 from langchain_core.tools import tool
 
+from app.services.duration_estimator import estimate_poi_duration_from_dict, estimate_daily_capacity
+
 
 # ---------------------------------------------------------------------------
 # Validation helpers
@@ -21,15 +23,22 @@ from langchain_core.tools import tool
 _MAX_DAILY_BUDGET_MIN = 840  # 14 hours — hard upper bound
 _TRANSIT_RATIO_WARN = 1.5     # warn when transit > 1.5× visit time
 
+# Business rules — hard coded, not LLM-dependent
+MIN_POI_RATING = 3.5           # minimum acceptable rating
+MAX_POI_SPREAD_KM = 35         # max geographic spread within one day
+
 
 def _validate_plan(plan_data: dict[str, Any]) -> list[str]:
     """Validate a submitted trip plan.  Returns a list of issues (empty = clean).
 
-    Only enforces structural correctness — *not* arbitrary POI-count or
-    distance limits.  The agent is trusted to manage time budget.
+    Enforces structural correctness AND business rules (POI count, rating,
+    geographic clustering).  The agent is no longer solely trusted.
     """
+    import math
+
     issues: list[str] = []
 
+    # ── Structural checks ────────────────────────────────────────────────
     city = plan_data.get("city", "")
     if not city:
         issues.append("city 不能为空")
@@ -56,7 +65,19 @@ def _validate_plan(plan_data: dict[str, Any]) -> list[str]:
             issues.append(f"第{day_num}天: 至少需要 1 个 POI")
             continue
 
-        # --- Duplicate & coordinate check ---
+        # ── Dynamic capacity check per day ──
+        durations = [
+            p.get("visit_duration_min") or estimate_poi_duration_from_dict(p)
+            for p in pois
+        ]
+        dynamic_cap = estimate_daily_capacity(durations)
+        if len(pois) > dynamic_cap + 1:  # +1 tolerance
+            issues.append(
+                f"第{day_num}天: 景点数量({len(pois)})超过动态容量({dynamic_cap})，"
+                f"建议将部分景点拆分到其他天"
+            )
+
+        # ── Duplicate & coordinate check ──
         for i, poi in enumerate(pois):
             poi_id = str(poi.get("poi_id", ""))
             if not poi_id:
@@ -78,7 +99,46 @@ def _validate_plan(plan_data: dict[str, Any]) -> list[str]:
             if not (-180 <= float(lng) <= 180 and -90 <= float(lat) <= 90):
                 issues.append(f"第{day_num}天, POI[{i}]: 坐标 lng={lng}, lat={lat} 超出合法范围")
 
-        # --- Time budget (hard cap) ---
+            # ── Business rule: minimum rating ──
+            rating = poi.get("rating")
+            if isinstance(rating, (int, float)) and rating > 0 and rating < MIN_POI_RATING:
+                issues.append(
+                    f"第{day_num}天: '{poi.get('name', poi_id)}' 评分({rating})低于"
+                    f"最低标准({MIN_POI_RATING})，建议替换为更高评分景点"
+                )
+
+        # ── Business rule: geographic spread ──
+        if len(pois) >= 3:
+            valid_coords = [
+                (float(p["lng"]), float(p["lat"]))
+                for p in pois
+                if isinstance(p.get("lng"), (int, float))
+                and isinstance(p.get("lat"), (int, float))
+            ]
+            if len(valid_coords) >= 3:
+                centroid_lng = sum(c[0] for c in valid_coords) / len(valid_coords)
+                centroid_lat = sum(c[1] for c in valid_coords) / len(valid_coords)
+                max_dist = 0.0
+                for clng, clat in valid_coords:
+                    dlat = math.radians(clat - centroid_lat)
+                    dlng = math.radians(clng - centroid_lng)
+                    a = (
+                        math.sin(dlat / 2) ** 2
+                        + math.cos(math.radians(centroid_lat))
+                        * math.cos(math.radians(clat))
+                        * math.sin(dlng / 2) ** 2
+                    )
+                    d = 6371.0 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+                    if d > max_dist:
+                        max_dist = d
+                if max_dist > MAX_POI_SPREAD_KM:
+                    issues.append(
+                        f"第{day_num}天: POI 地理分布过散"
+                        f"（最远点距中心 {max_dist:.0f}km > {MAX_POI_SPREAD_KM}km），"
+                        f"建议将距离较远的景点移到其他天"
+                    )
+
+        # ── Time budget (hard cap) ──
         total_dur = day_plan.get("total_duration_min", 0) or 0
         if isinstance(total_dur, (int, float)) and total_dur > _MAX_DAILY_BUDGET_MIN:
             issues.append(
@@ -86,7 +146,7 @@ def _validate_plan(plan_data: dict[str, Any]) -> list[str]:
                 f"{_MAX_DAILY_BUDGET_MIN}min，请将该天 POI 拆分到多天"
             )
 
-        # --- Transit ratio warning (soft) ---
+        # ── Transit ratio warning (soft) ──
         total_visit = sum(
             p.get("visit_duration_min", 0) or 0
             for p in pois
@@ -146,10 +206,14 @@ async def submit_plan(
               "total_transit_min": 35
             }
     """
-    # ── Auto-route each day in parallel via Amap waypoint API ────────────
+    # ── Auto-route each day if not already routed ────────────────────────
     _sorted = sorted(daily_plans, key=lambda d: d.get("day", 0))
-    _tasks = [_route_one_day(dp) for dp in _sorted]
-    enriched_plans = list(await asyncio.gather(*_tasks))
+    _tasks = [
+        route_one_day(dp) if not (dp.get("segments") or dp.get("polyline"))
+        else asyncio.sleep(0, result=dp)
+        for dp in _sorted
+    ]
+    enriched_plans = await asyncio.gather(*_tasks)
 
     plan = {"city": city, "days": days, "daily_plans": enriched_plans}
     issues = _validate_plan(plan)
@@ -174,7 +238,7 @@ async def submit_plan(
     }
 
 
-def _fallback_segments(pois: list[dict], dp: dict) -> None:
+def _fallback_segments(pois: list[dict[str, Any]], dp: dict[str, Any]) -> None:
     """Compute haversine segments when Amap API is unavailable."""
     import math
     def _h(p1, p2):
@@ -196,22 +260,25 @@ def _fallback_segments(pois: list[dict], dp: dict) -> None:
     dp["segments"] = segs
 
 
-async def _route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
-    """TSP sort a single day's POIs and fetch Amap waypoint route.
-
-    Runs per-day so ``asyncio.gather`` can fan out across all days.
-    """
+async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
+    """TSP sort a single day's POIs and fetch Amap waypoint route."""
     from agent.tools import get_amap
     from agent.tools.tsp_solver import solve_tsp
 
     pois = dp.get("pois", [])
+    result: dict[str, Any] = {
+        "day": dp.get("day"),
+        "day_theme": dp.get("day_theme"),
+        "total_duration_min": dp.get("total_duration_min", 0),
+        "total_transit_min": dp.get("total_transit_min", 0),
+    }
     if len(pois) >= 2:
         try:
             order, _ = solve_tsp(pois)
             ordered = [pois[i] for i in order]
         except Exception:
             ordered = pois
-        dp["pois"] = ordered
+        result["pois"] = ordered
         try:
             amap = get_amap()
             origin = (ordered[0]["lng"], ordered[0]["lat"])
@@ -222,10 +289,12 @@ async def _route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
             route = await amap.plan_route_with_waypoints(
                 origin=origin, destination=destination, waypoints=wps, mode="driving",
             )
-            dp["total_distance_km"] = route.get("distance_km", 0)
-            dp["total_transit_min"] = route.get("duration_min", 0)
-            dp["polyline"] = route.get("polyline", "")
-            dp["segments"] = route.get("segments", [])
+            result["total_distance_km"] = route.get("distance_km", 0)
+            result["total_transit_min"] = route.get("duration_min", 0)
+            result["polyline"] = route.get("polyline", "")
+            result["segments"] = route.get("segments", [])
         except Exception:
-            _fallback_segments(ordered, dp)
-    return dp
+            _fallback_segments(ordered, result)
+    else:
+        result["pois"] = list(pois)
+    return result

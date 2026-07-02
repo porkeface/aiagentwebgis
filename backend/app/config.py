@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # Map
     amap_api_key: str = Field(default="", description="Amap (Gaode) API key")
 
+    # Xiaohongshu / OneAPI
+    oneapi_api_key: str = Field(default="", description="OneAPI API key for Xiaohongshu search")
+
     # Security
     jwt_secret_key: str = Field(
         default="change-this-to-a-random-secret-key",
@@ -55,10 +58,10 @@ class Settings(BaseSettings):
     )
 
     model_config = {
-        "env_file": (".env", "../.env"),  # Try backend/.env first, then project root
+        "env_file": (".env", "../.env", "../../.env"),  # backend/.env, then project root
         "env_file_encoding": "utf-8",
         "case_sensitive": False,
-        "extra": "allow",  # Allow extra env vars like DB_PASSWORD from docker-compose
+        "extra": "ignore",
     }
 
     @model_validator(mode="after")

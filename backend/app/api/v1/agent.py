@@ -5,6 +5,7 @@ Powered by a custom ReAct StateGraph with per-token text streaming and
 per-tool progress events.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -15,12 +16,12 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import ToolMessage
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agent.graph import build_graph
+from agent.graph_v2 import build_graph_v2
 from agent.progress import ProgressTracker
 from app.database import get_session
 from app.models.user import User
@@ -32,6 +33,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/agent", tags=["Agent"])
 
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+# Overall graph execution timeout — 5 minutes hard cap
+GRAPH_EXECUTION_TIMEOUT = 300
 
 
 async def get_optional_user(
@@ -234,6 +238,66 @@ def _build_plan_summary_event(plan_output: dict[str, Any]) -> str | None:
     })
 
 
+def _build_route_result_from_pipeline(
+    pipeline_data: dict[str, Any],
+    registry: POIRegistry,
+) -> str | None:
+    """Build a route_result SSE event from planning pipeline output."""
+    daily_plans_raw = pipeline_data.get("daily_plans", [])
+    if not daily_plans_raw:
+        return None
+
+    formatted_plans: list[dict[str, Any]] = []
+    for day_plan in daily_plans_raw:
+        day_pois: list[dict[str, Any]] = []
+        for ref in day_plan.get("pois", []):
+            if isinstance(ref, str):
+                # String POI id — use as-is
+                day_pois.append({"id": ref, "name": ref, "lng": 0.0, "lat": 0.0, "category": ""})
+                continue
+            pid = str(ref.get("poi_id", ref.get("id", "")))
+            full = registry.resolve(pid)
+            if full is None:
+                ref_lng = ref.get("lng", 0.0)
+                ref_lat = ref.get("lat", 0.0)
+                day_pois.append({
+                    "id": pid,
+                    "name": ref.get("name", f"POI {pid[:8]}"),
+                    "category": ref.get("category", ""),
+                    "lng": float(ref_lng) if ref_lng else 0.0,
+                    "lat": float(ref_lat) if ref_lat else 0.0,
+                })
+                continue
+            day_pois.append({
+                "id": full.get("id", pid),
+                "name": full.get("name", ""),
+                "category": full.get("category", ""),
+                "address": full.get("address"),
+                "lng": full.get("lng", 0.0),
+                "lat": full.get("lat", 0.0),
+                "rating": full.get("rating"),
+                "tags": full.get("tags", []),
+                "photo": full.get("photo"),
+                "description": full.get("description"),
+            })
+
+        formatted_plans.append({
+            "day": day_plan.get("day", 1),
+            "day_title": day_plan.get("day_theme", f"第{day_plan.get('day', 1)}天"),
+            "pois": day_pois,
+            "total_distance_km": day_plan.get("total_distance_km", 0),
+            "total_duration_min": day_plan.get("total_duration_min", 0),
+            "total_transit_min": day_plan.get("total_transit_min", 0),
+            "polyline": day_plan.get("polyline", ""),
+            "segments": day_plan.get("segments", []),
+        })
+
+    return _format_sse_event("message", {
+        "type": "route_result",
+        "data": {"daily_plans": formatted_plans},
+    })
+
+
 # ---------------------------------------------------------------------------
 # Tool result handler (extracted from inline on_tool_end logic)
 # ---------------------------------------------------------------------------
@@ -341,7 +405,7 @@ async def _event_generator(
     messages_for_db: list[dict[str, Any]] | None = None
 
     try:
-        graph = build_graph()
+        graph = build_graph_v2()
         config: dict[str, Any] = {
             "configurable": {"thread_id": session_id},
         }
@@ -356,69 +420,141 @@ async def _event_generator(
         accumulated_text = ""
 
         # Use astream_events for per-token streaming + node-level updates
-        async for event in graph.astream_events(initial_state, config, version="v2"):
-            kind = event.get("event", "")
-            name = event.get("name", "")
-            data = event.get("data", {})
+        async with asyncio.timeout(GRAPH_EXECUTION_TIMEOUT):
+            async for event in graph.astream_events(initial_state, config, version="v2"):
+                kind = event.get("event", "")
+                name = event.get("name", "")
+                data = event.get("data", {})
 
-            # ── Per-token text streaming ──
-            if kind == "on_chat_model_stream":
-                chunk = data.get("chunk")
-                if chunk and hasattr(chunk, "content") and chunk.content:
-                    accumulated_text += chunk.content
+                # ── Custom writer events (from planning pipeline) ──
+                if kind == "on_custom_event":
+                    custom_name = event.get("name", "")
+                    custom_data = event.get("data", {})
+
+                    if custom_name == "intent_detected":
+                        yield _format_sse_event("message", {
+                            "type": "thinking",
+                            "data": {"content": "AI 正在分析您的需求..."},
+                        })
+
+                    elif custom_name == "searching":
+                        yield _format_sse_event("message", {
+                            "type": "tool_calling",
+                            "data": {"content": custom_data.get("message", "正在搜索...")},
+                        })
+
+                    elif custom_name == "candidates_ready":
+                        pois = custom_data.get("pois", [])
+                        registry.ingest(pois)
+                        poi_event = _build_poi_result_event(registry)
+                        if poi_event:
+                            yield poi_event
+
+                    elif custom_name == "scoring":
+                        yield _format_sse_event("message", {
+                            "type": "tool_calling",
+                            "data": {"content": custom_data.get("message", "正在评估...")},
+                        })
+
+                    elif custom_name == "clustering":
+                        yield _format_sse_event("message", {
+                            "type": "tool_calling",
+                            "data": {"content": custom_data.get("message", "正在分区...")},
+                        })
+
+                    elif custom_name == "day_routing":
+                        day_num = custom_data.get("day", 0)
+                        yield _format_sse_event("message", {
+                            "type": "progress",
+                            "data": {
+                                "step": day_num,
+                                "total": len(registry.all_pois()) or 3,
+                                "label": custom_data.get("message", f"正在规划第{day_num}天路线..."),
+                            },
+                        })
+
+                    elif custom_name == "route_result":
+                        route_event = _build_route_result_from_pipeline(custom_data, registry)
+                        if route_event:
+                            parsed = json.loads(route_event.split("\n")[1].replace("data: ", "", 1))
+                            map_snapshot["routes"] = parsed.get("data", {}).get("daily_plans", [])
+                            yield route_event
+
+                    elif custom_name == "plan_summary":
+                        plan_event = _format_sse_event("message", {
+                            "type": "plan_summary",
+                            "data": custom_data,
+                        })
+                        yield plan_event
+                        p = custom_data
+                        map_snapshot["plan_summary"] = p
+
+                    elif custom_name == "error":
+                        yield _format_sse_event("message", {
+                            "type": "error",
+                            "data": custom_data,
+                        })
+
+                    continue  # skip the standard event processing below
+
+                # ── Per-token text streaming ──
+                if kind == "on_chat_model_stream":
+                    chunk = data.get("chunk")
+                    if chunk and hasattr(chunk, "content") and chunk.content:
+                        accumulated_text += chunk.content
+                        yield _format_sse_event("message", {
+                            "type": "text",
+                            "data": {"content": chunk.content},
+                        })
+
+                # ── LLM thinking start ──
+                elif kind == "on_chat_model_start":
+                    accumulated_text = ""
                     yield _format_sse_event("message", {
-                        "type": "text",
-                        "data": {"content": chunk.content},
+                        "type": "thinking",
+                        "data": {"content": "AI 正在思考..."},
                     })
 
-            # ── LLM thinking start ──
-            elif kind == "on_chat_model_start":
-                accumulated_text = ""
-                yield _format_sse_event("message", {
-                    "type": "thinking",
-                    "data": {"content": "AI 正在思考..."},
-                })
+                # ── Tool starts ──
+                elif kind == "on_tool_start":
+                    tool_name = name or ""
+                    tool_input = data.get("input", {})
+                    label = progress.add_tool(tool_name, tool_input)
+                    yield _format_sse_event("message", {
+                        "type": "tool_calling",
+                        "data": {"content": label},
+                    })
 
-            # ── Tool starts ──
-            elif kind == "on_tool_start":
-                tool_name = name or ""
-                tool_input = data.get("input", {})
-                label = progress.add_tool(tool_name, tool_input)
-                yield _format_sse_event("message", {
-                    "type": "tool_calling",
-                    "data": {"content": label},
-                })
+                # ── Tool ends ──
+                elif kind == "on_tool_end":
+                    tool_name = name or ""
+                    output = data.get("output")
 
-            # ── Tool ends ──
-            elif kind == "on_tool_end":
-                tool_name = name or ""
-                output = data.get("output")
+                    # Unwrap ToolMessage
+                    if hasattr(output, "content") and hasattr(output, "tool_call_id"):
+                        output = output.content
+                        if isinstance(output, str):
+                            try: output = json.loads(output)
+                            except (json.JSONDecodeError, TypeError): pass
 
-                # Unwrap ToolMessage
-                if hasattr(output, "content") and hasattr(output, "tool_call_id"):
-                    output = output.content
-                    if isinstance(output, str):
-                        try: output = json.loads(output)
-                        except (json.JSONDecodeError, TypeError): pass
+                    progress.mark_complete()
+                    ev = {
+                        "type": "progress",
+                        "data": {
+                            "step": progress.completed,
+                            "total": max(len(progress.labels), progress.completed),
+                            "label": (progress.labels[progress.completed - 1] if progress.completed <= len(progress.labels) else "处理中..."),
+                        },
+                    }
+                    yield _format_sse_event("message", ev)
 
-                progress.mark_complete()
-                ev = {
-                    "type": "progress",
-                    "data": {
-                        "step": progress.completed,
-                        "total": max(len(progress.labels), progress.completed),
-                        "label": (progress.labels[progress.completed - 1] if progress.completed <= len(progress.labels) else "处理中..."),
-                    },
-                }
-                yield _format_sse_event("message", ev)
-
-                result = _handle_tool_result(tool_name, output, registry, map_snapshot)
-                if result:
-                    yield result
-                if tool_name == "submit_plan" and isinstance(output, dict) and output.get("status") == "accepted":
-                    summary = _build_plan_summary_event(output)
-                    if summary:
-                        yield summary
+                    result = _handle_tool_result(tool_name, output, registry, map_snapshot)
+                    if result:
+                        yield result
+                    if tool_name == "submit_plan" and isinstance(output, dict) and output.get("status") == "accepted":
+                        summary = _build_plan_summary_event(output)
+                        if summary:
+                            yield summary
 
         # ---- Build messages list for DB persistence ----
         messages_for_db = [
@@ -443,7 +579,7 @@ async def _event_generator(
         yield _format_error_event("抱歉，服务连接失败，请检查网络后重试。")
     except Exception as e:
         logger.exception(f"Agent unexpected error for session_id={session_id}")
-        yield _format_error_event(f"抱歉，处理您的请求时出现错误，请稍后重试。({type(e).__name__})")
+        yield _format_error_event("抱歉，处理您的请求时出现错误，请稍后重试。")
 
     finally:
         if user_id is not None and messages_for_db is not None:
