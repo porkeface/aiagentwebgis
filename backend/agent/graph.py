@@ -231,9 +231,9 @@ async def tools_node(state: AgentState, config: RunnableConfig) -> dict[str, Any
                 tool_call_id=call_id,
             ))
         except Exception as exc:
-            logger.exception("Tool %s failed", tc["name"])
+            logger.warning("Tool %s failed: %s", tc["name"], exc.__class__.__name__)
             tool_messages.append(ToolMessage(
-                content=json.dumps({"error": str(exc)}),
+                content=json.dumps({"error": "工具执行失败"}),
                 tool_call_id=call_id,
             ))
 
@@ -269,7 +269,7 @@ async def tools_node(state: AgentState, config: RunnableConfig) -> dict[str, Any
                 tool_messages.append(item)
             else:
                 tool_messages.append(ToolMessage(
-                    content=json.dumps({"error": str(item)}),
+                    content=json.dumps({"error": "工具执行失败"}),
                     tool_call_id="unknown",
                 ))
 
