@@ -51,16 +51,6 @@ export const useChatStore = defineStore("chat", () => {
   async function sendMessage(content: string): Promise<void> {
     if (!content.trim() || loading.value) return;
 
-    // Generate a new session id for each new trip planning request so
-    // the LangGraph checkpointer starts a fresh thread (avoids key conflicts
-    // from previous conversations).
-    if (
-      /[一两二三四五六七八九十]日游|天游|日游/.test(content.trim()) ||
-      /规划.*行程|行程.*规划|旅游攻略/.test(content.trim())
-    ) {
-      sessionId.value = generateSessionId();
-    }
-
     // Store for retry
     lastUserMessage.value = content.trim();
 
