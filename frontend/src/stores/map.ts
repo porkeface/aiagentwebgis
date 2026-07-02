@@ -128,6 +128,9 @@ export const useMapStore = defineStore("map", () => {
   // ── Current transport mode ──────────────────────────────────────────────────
   const transportMode = ref<string>('driving');
 
+  // ── Basemap layer ──────────────────────────────────────────────────────────
+  const basemapLayer = ref<'standard' | 'satellite'>('standard');
+
   // ── POI selection for planning ─────────────────────────────────────────────
   const selectedPoiIds = ref<Set<string>>(new Set());
   const poiPanelOpen = ref(false);
@@ -301,6 +304,10 @@ export const useMapStore = defineStore("map", () => {
     transportMode.value = mode;
   }
 
+  function setBasemapLayer(layer: 'standard' | 'satellite'): void {
+    basemapLayer.value = layer;
+  }
+
   return {
     // state
     pois,
@@ -314,6 +321,7 @@ export const useMapStore = defineStore("map", () => {
     activeDay,
     timelineOpen,
     transportMode,
+    basemapLayer,
     // getters
     poiCount,
     selectedPoiCount,
@@ -344,5 +352,6 @@ export const useMapStore = defineStore("map", () => {
     setPoiPanelOpen,
     togglePoiPanel,
     setTransportMode,
+    setBasemapLayer,
   };
 });

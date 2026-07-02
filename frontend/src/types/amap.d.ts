@@ -25,6 +25,7 @@ declare namespace AMap {
     constructor(container: string | HTMLDivElement, opts?: MapOptions)
     setZoomAndCenter(zoom: number, center: [number, number]): void
     setBounds(bounds: Bounds, immediately?: boolean, padding?: number[]): void
+    setLayers(layers: unknown[]): void
     add(overlay: unknown): void
     remove(overlay: unknown): void
     destroy(): void
@@ -98,5 +99,16 @@ declare namespace AMap {
 
   class Text {
     constructor(opts?: TextOptions)
+  }
+
+  // ── TileLayer ────────────────────────────────────────────────────────────
+  class TileLayer {
+    constructor()
+  }
+
+  namespace TileLayer {
+    class Satellite {
+      constructor()
+    }
   }
 }

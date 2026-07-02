@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { watch, computed, shallowRef, ref, onMounted, onUnmounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import type { POI } from '@/types'
 import { useMapStore, type DailyPlan } from '@/stores/map'
 import { RouteLayerRenderer } from './RouteLayer.js'
@@ -77,6 +78,88 @@ onUnmounted(() => {
     mediaQuery.removeEventListener('change', checkDarkMode)
   }
 })
+
+// ── Geolocation ─────────────────────────────────────────────────────────────
+const userLocation = ref<{ lng: number; lat: number } | null>(null)
+const geoMarker = shallowRef<AMap.Marker | null>(null)
+
+function locateUser(): void {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    ElMessage.warning('浏览器不支持定位功能')
+    return
+  }
+
+  // If already located, just re-center
+  if (userLocation.value && amapMap.value) {
+    amapMap.value.setZoomAndCenter(15, [userLocation.value.lng, userLocation.value.lat])
+    return
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const loc = { lng: pos.coords.longitude, lat: pos.coords.latitude }
+      userLocation.value = loc
+      if (amapMap.value) {
+        amapMap.value.setZoomAndCenter(15, [loc.lng, loc.lat])
+      }
+      // Add a blue dot marker
+      if (amapSDK.value) {
+        if (geoMarker.value) {
+          amapMap.value?.remove(geoMarker.value)
+        }
+        const marker = new amapSDK.value.Marker({
+          position: [loc.lng, loc.lat],
+          content: `<div style="
+            width:16px;height:16px;
+            background:#4285f4;border-radius:50%;
+            border:3px solid #fff;
+            box-shadow:0 0 12px rgba(66,133,244,0.6);
+            animation:geo-pulse 1.8s ease-out infinite;
+          "></div>`,
+          offset: new amapSDK.value.Pixel(-8, -8),
+          zIndex: 600,
+        })
+        amapMap.value?.add(marker)
+        geoMarker.value = marker
+      }
+    },
+    (err) => {
+      if (err.code === 1) {
+        ElMessage.warning('位置获取被拒绝，请在浏览器设置中允许定位')
+      } else if (err.code === 2) {
+        ElMessage.warning('无法获取位置，请检查 GPS/网络')
+      } else if (err.code === 3) {
+        ElMessage.warning('位置获取超时，请重试')
+      }
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+  )
+}
+
+// ── Layer switch ─────────────────────────────────────────────────────────────
+const basemapLayer = computed(() => mapStore.basemapLayer)
+let _tileLayer: InstanceType<typeof AMap.TileLayer> | null = null
+let _satelliteLayer: InstanceType<typeof AMap.TileLayer.Satellite> | null = null
+
+function toggleBasemap(): void {
+  const map = amapMap.value
+  const AMap = amapSDK.value
+  if (!map || !AMap) return
+
+  if (mapStore.basemapLayer === 'standard') {
+    mapStore.setBasemapLayer('satellite')
+    if (!_satelliteLayer) {
+      _satelliteLayer = new AMap.TileLayer.Satellite()
+    }
+    map.setLayers([_satelliteLayer])
+  } else {
+    mapStore.setBasemapLayer('standard')
+    if (!_tileLayer) {
+      _tileLayer = new AMap.TileLayer()
+    }
+    map.setLayers([_tileLayer])
+  }
+}
 
 // ── Amap initialisation ─────────────────────────────────────────────────────
 onMounted(async () => {
@@ -304,19 +387,43 @@ function onPOIsClick(): void {
       <ItineraryTimeline @close="mapStore.closeTimeline" />
     </div>
 
-    <button
-      class="map-dark-toggle"
-      :title="effectiveDark ? '切换浅色' : '切换深色'"
-      @click="toggleDarkMode"
-    >
-      <svg v-if="effectiveDark" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke-linecap="round" />
-      </svg>
-      <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke-linejoin="round" />
-      </svg>
-    </button>
+    <!-- Top-right: map control buttons -->
+    <div class="map-controls">
+      <button
+        class="map-controls__btn"
+        :title="basemapLayer === 'standard' ? '切换卫星图' : '切换标准图'"
+        @click="toggleBasemap"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2L2 7l10 5 10-5-10-5z" stroke-linejoin="round" />
+          <path d="M2 17l10 5 10-5" stroke-linejoin="round" />
+          <path d="M2 12l10 5 10-5" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <button
+        class="map-controls__btn"
+        title="定位"
+        @click="locateUser"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke-linecap="round" />
+        </svg>
+      </button>
+      <button
+        class="map-controls__btn"
+        :title="effectiveDark ? '切换浅色' : '切换深色'"
+        @click="toggleDarkMode"
+      >
+        <svg v-if="effectiveDark" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke-linecap="round" />
+        </svg>
+        <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </div>
 
     <!-- Transport mode selector -->
     <div v-if="hasRoutes" class="mode-selector">
@@ -468,12 +575,17 @@ function onPOIsClick(): void {
   box-shadow: var(--shadow-md);
 }
 
-/* Dark/light mode toggle */
-.map-dark-toggle {
+/* Top-right map control button group */
+.map-controls {
   position: absolute;
   top: var(--space-xl);
   right: var(--space-xl);
   z-index: 1150;
+  display: flex;
+  gap: var(--space-2xs);
+}
+
+.map-controls__btn {
   width: 40px;
   height: 40px;
   display: flex;
@@ -490,7 +602,7 @@ function onPOIsClick(): void {
   box-shadow: var(--shadow-md);
 }
 
-.map-dark-toggle:hover {
+.map-controls__btn:hover {
   color: var(--color-text-primary);
   background: rgba(243, 236, 225, 0.08);
 }
