@@ -405,7 +405,12 @@ async def _event_generator(
     messages_for_db: list[dict[str, Any]] | None = None
 
     try:
-        graph = build_graph_v2()
+        # Trip planning does not need checkpointing — each request is
+        # self-contained. The pipeline path goes classify_intent →
+        # planning_pipeline → summary_node → END, which never loops
+        # back, so the checkpointer only gets in the way by merging
+        # old graph state into future runs.
+        graph = build_graph_v2(checkpointer=False)
         config: dict[str, Any] = {
             "configurable": {"thread_id": session_id},
         }
