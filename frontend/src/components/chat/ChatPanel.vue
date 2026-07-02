@@ -2,12 +2,14 @@
 import { ref, watch, nextTick, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useChatStore } from '@/stores/chat'
+import { useTripStore } from '@/stores/trip'
 import { getToken, getUsername, logout, setAuthChangeListener } from '@/api/auth'
 import MessageBubble from './MessageBubble.vue'
 import AuthDialog from './AuthDialog.vue'
 
 // ── Store ────────────────────────────────────────────────────────────────────
 const chatStore = useChatStore()
+const tripStore = useTripStore()
 
 // ── Progress bar ─────────────────────────────────────────────────────────────
 const progressPercent = computed(() => {
@@ -55,6 +57,7 @@ async function handleLogout(): Promise<void> {
   refreshAuthState()
   historyOpen.value = false
   chatStore.historySessions = []
+  tripStore.trips = []
   ElMessage.info('已退出登录')
 }
 
