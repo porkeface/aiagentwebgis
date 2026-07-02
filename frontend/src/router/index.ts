@@ -29,6 +29,30 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: "/admin",
+    component: () => import("@/views/admin/AdminLayout.vue"),
+    beforeEnter: async () => {
+      const token = getToken();
+      if (!token) return { name: "home", query: { auth: "required" } };
+      try {
+        const res = await fetch("/api/v1/admin/check", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error();
+      } catch {
+        return { name: "home" };
+      }
+      return true;
+    },
+    children: [
+      { path: "", redirect: "/admin/models" },
+      { path: "models", component: () => import("@/views/admin/ModelConfigView.vue") },
+      { path: "users", component: () => import("@/views/admin/UserManagementView.vue") },
+      { path: "data", component: () => import("@/views/admin/DataManagementView.vue") },
+      { path: "database", component: () => import("@/views/admin/DatabaseConfigView.vue") },
+    ],
+  },
+  {
     path: "/:pathMatch(.*)*",
     name: "not-found",
     component: () => import("@/views/NotFoundView.vue"),
