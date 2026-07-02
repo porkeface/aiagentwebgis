@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
+
+_SEARCH_RETRIES = 2
+_SEARCH_BACKOFF = 1.0  # seconds
 
 
 @tool
@@ -30,11 +34,15 @@ async def search_pois(
     from agent.tools import get_amap
 
     amap = get_amap()
-    try:
-        return await amap.search_pois(city=city, category=category, keyword=keyword or None)
-    except Exception:
-        logger.exception("search_pois failed for %s/%s", city, category)
-        return [{"error": "POI搜索失败", "city": city, "category": category}]
+    for attempt in range(1 + _SEARCH_RETRIES):
+        try:
+            return await amap.search_pois(city=city, category=category, keyword=keyword or None)
+        except Exception:
+            if attempt < _SEARCH_RETRIES:
+                await asyncio.sleep(_SEARCH_BACKOFF * (2 ** attempt))
+                continue
+            logger.exception("search_pois failed for %s/%s", city, category)
+            return [{"error": "POI搜索失败", "city": city, "category": category}]
 
 
 @tool
