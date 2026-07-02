@@ -224,6 +224,10 @@ async def save_plan(
             day_number=day_plan.day,
             date=start_date + timedelta(days=day_plan.day - 1),
             notes=day_plan.day_title,
+            polyline=day_plan.polyline,
+            segments_json=day_plan.segments,
+            total_distance_km=day_plan.total_distance_km,
+            total_duration_min=day_plan.total_duration_min,
         )
         db.add(day)
         await db.flush()

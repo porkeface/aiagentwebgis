@@ -202,11 +202,22 @@ async def get_trip_endpoint(
                 "address": (poi_obj.extra_data or {}).get("address") if poi_obj else None,
                 "tags": (poi_obj.tags or []) if poi_obj else [],
             })
+        import json
+        segments = None
+        if day.segments_json:
+            try:
+                segments = json.loads(day.segments_json) if isinstance(day.segments_json, str) else day.segments_json
+            except (json.JSONDecodeError, TypeError):
+                pass
         daily_plans.append({
             "day_number": day.day_number,
             "date": day.date.isoformat(),
             "notes": day.notes,
             "pois": pois,
+            "total_distance_km": day.total_distance_km,
+            "total_transit_min": day.total_duration_min,
+            "polyline": day.polyline,
+            "segments": segments or [],
         })
 
     return {

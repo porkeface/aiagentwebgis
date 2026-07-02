@@ -88,6 +88,9 @@ async function saveCurrentTrip(): Promise<void> {
       photo: p.photo ?? undefined,
     })),
     total_distance_km: r.total_distance_km ?? 0,
+    total_duration_min: r.total_transit_min ?? 0,
+    polyline: r.polyline ?? '',
+    segments: r.segments ?? [],
   }))
 
   try {
@@ -140,6 +143,10 @@ function loadTripToMap(trip: TripDetail): void {
           address: poi.address,
           tags: poi.tags || [],
         })),
+      total_distance_km: day.total_distance_km ?? 0,
+      total_transit_min: day.total_transit_min ?? undefined,
+      polyline: day.polyline ?? '',
+      segments: day.segments ?? [],
     }))
 
   mapStore.setPOIs(allPois)

@@ -34,6 +34,13 @@ export interface SavePlanDay {
   pois: SavePlanPOI[];
   total_distance_km: number;
   total_duration_min?: number;
+  polyline?: string;
+  segments?: Array<{
+    distance_km: number;
+    duration_min?: number;
+    polyline?: string;
+    mode?: string;
+  }>;
 }
 
 /** Body of POST /trips/save-plan */

@@ -97,6 +97,8 @@ class SavePlanDay(BaseModel):
     pois: list[SavePlanPOI] = Field(default_factory=list)
     total_distance_km: float = 0.0
     total_duration_min: float | None = None
+    polyline: str | None = None
+    segments: list[dict] = Field(default_factory=list)
 
 
 class SavePlanRequest(BaseModel):

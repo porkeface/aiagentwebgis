@@ -66,6 +66,15 @@ export interface DayPlanDetail {
   date: string;
   notes: string | null;
   pois: TripDayPOI[];
+  total_distance_km?: number;
+  total_transit_min?: number;
+  polyline?: string;
+  segments?: Array<{
+    distance_km: number;
+    duration_min?: number;
+    polyline?: string;
+    mode?: string;
+  }>;
 }
 
 // ── Trip Detail (from GET /trips/:id) ─────────────────────────────────────────

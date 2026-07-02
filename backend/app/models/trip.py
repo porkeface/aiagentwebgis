@@ -71,6 +71,10 @@ class TripDay(Base):
     day_number: Mapped[int] = mapped_column(Integer, nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    polyline: Mapped[str] = mapped_column(Text, nullable=True)
+    segments_json: Mapped[str] = mapped_column(Text, nullable=True)
+    total_distance_km: Mapped[float] = mapped_column(Float, nullable=True)
+    total_duration_min: Mapped[float] = mapped_column(Float, nullable=True)
 
     # Relationships
     trip: Mapped["Trip"] = relationship("Trip", back_populates="days")
