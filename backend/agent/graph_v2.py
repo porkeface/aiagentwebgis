@@ -80,8 +80,8 @@ def _build_tool_map() -> dict[str, Any]:
 
 def _get_model() -> ChatOpenAI:
     return ChatOpenAI(
-        model="qwen-plus",
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model=settings.llm_model,
+        base_url=settings.llm_base_url,
         api_key=settings.dashscope_api_key,
         temperature=0.0,
         streaming=True,
@@ -93,8 +93,8 @@ def _get_model() -> ChatOpenAI:
 def _get_model_no_tools() -> ChatOpenAI:
     """LLM without tool binding — for intent classification and summaries."""
     return ChatOpenAI(
-        model="qwen-plus",
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model=settings.llm_model,
+        base_url=settings.llm_base_url,
         api_key=settings.dashscope_api_key,
         temperature=0.0,
         streaming=True,

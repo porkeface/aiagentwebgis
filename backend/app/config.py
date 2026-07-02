@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # LLM
     dashscope_api_key: str = Field(default="", description="DashScope API key")
     llm_provider: str = Field(default="dashscope", description="LLM provider name")
+    llm_model: str = Field(default="qwen-plus", description="LLM model name")
+    llm_base_url: str = Field(
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        description="LLM API base URL",
+    )
 
     # Map
     amap_api_key: str = Field(default="", description="Amap (Gaode) API key")
