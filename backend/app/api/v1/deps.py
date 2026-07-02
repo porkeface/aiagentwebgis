@@ -73,10 +73,13 @@ async def get_current_user(
     if is_jti_revoked(token_jti(token)):
         raise credentials_exception
 
-    # Verify the user still exists in the database
+    # Verify the user still exists in the database.
+    # Username/primary-key query is lightweight but still hits the DB pool;
+    # in-memory token validation above already covers the fast path.
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
         raise credentials_exception
 
+    await db.commit()  # release session immediately
     return user_id
