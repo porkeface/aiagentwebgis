@@ -97,30 +97,58 @@ function locateUser(): void {
 
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      const loc = { lng: pos.coords.longitude, lat: pos.coords.latitude }
-      userLocation.value = loc
-      if (amapMap.value) {
-        amapMap.value.setZoomAndCenter(15, [loc.lng, loc.lat])
-      }
-      // Add a blue dot marker
+      // Browser geolocation returns WGS-84 coordinates.
+      // Amap uses GCJ-02 (the Chinese national standard). Without conversion,
+      // the marker would be offset by 100-700 m.  Request the Amap convertor.
+      const wgsLng = pos.coords.longitude
+      const wgsLat = pos.coords.latitude
+
+      let lng = wgsLng
+      let lat = wgsLat
+
       if (amapSDK.value) {
-        if (geoMarker.value) {
-          amapMap.value?.remove(geoMarker.value)
+        try {
+          // AMap.convertFrom converts from WGS-84/GPS to GCJ-02
+          amapSDK.value.convertFrom([wgsLng, wgsLat], 'gps', (_status: string, result: any) => {
+            if (result && result.locations) {
+              lng = result.locations[0].lng
+              lat = result.locations[0].lat
+            }
+            _applyLoc(lng, lat)
+          })
+          return
+        } catch {
+          // Fall through to raw WGS-84
         }
-        const marker = new amapSDK.value.Marker({
-          position: [loc.lng, loc.lat],
-          content: `<div style="
-            width:16px;height:16px;
-            background:#4285f4;border-radius:50%;
-            border:3px solid #fff;
-            box-shadow:0 0 12px rgba(66,133,244,0.6);
-            animation:geo-pulse 1.8s ease-out infinite;
-          "></div>`,
-          offset: new amapSDK.value.Pixel(-8, -8),
-          zIndex: 600,
-        })
-        amapMap.value?.add(marker)
-        geoMarker.value = marker
+      }
+
+      _applyLoc(lng, lat)
+
+      function _applyLoc(_lng: number, _lat: number) {
+        const loc = { lng: _lng, lat: _lat }
+        userLocation.value = loc
+        if (amapMap.value) {
+          amapMap.value.setZoomAndCenter(15, [loc.lng, loc.lat])
+        }
+        if (amapSDK.value) {
+          if (geoMarker.value) {
+            amapMap.value?.remove(geoMarker.value)
+          }
+          const marker = new amapSDK.value.Marker({
+            position: [loc.lng, loc.lat],
+            content: `<div style="
+              width:16px;height:16px;
+              background:#4285f4;border-radius:50%;
+              border:3px solid #fff;
+              box-shadow:0 0 12px rgba(66,133,244,0.6);
+              animation:geo-pulse 1.8s ease-out infinite;
+            "></div>`,
+            offset: new amapSDK.value.Pixel(-8, -8),
+            zIndex: 600,
+          })
+          amapMap.value?.add(marker)
+          geoMarker.value = marker
+        }
       }
     },
     (err) => {
