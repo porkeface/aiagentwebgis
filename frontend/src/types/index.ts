@@ -61,6 +61,8 @@ export interface DayPlan {
 }
 
 // ── Day Plan Detail (from trip detail API) ────────────────────────────────────
+import type { TransportMode } from "@/utils/format";
+
 export interface DayPlanDetail {
   day_number: number;
   date: string;
@@ -73,7 +75,9 @@ export interface DayPlanDetail {
     distance_km: number;
     duration_min?: number;
     polyline?: string;
-    mode?: string;
+    /** Narrowed at render time. The backend currently emits driving/walking
+     *  only; other values are coerced via `defaultModeFor`. */
+    mode?: TransportMode;
   }>;
 }
 

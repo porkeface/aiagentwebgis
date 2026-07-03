@@ -2,6 +2,12 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { POI } from "@/types";
 import { DAY_COLORS } from "@/utils/constants";
+import {
+  coerceMode,
+  defaultModeFor,
+  estimateDuration as estimateDurationByMode,
+  type TransportMode,
+} from "@/utils/format";
 
 export interface PlanSummary {
   city: string;
@@ -15,7 +21,7 @@ export interface RouteSegment {
   distance_km: number;
   duration_min?: number;
   polyline?: string;   // Amap polyline for this segment ("lng,lat;lng,lat;...")
-  mode?: string;        // "driving" | "walking" | "bicycling" | "transit"
+  mode?: TransportMode; // null/undefined means "use defaultModeFor(distance_km)"
 }
 
 /** A single POI stop inside a daily plan */
@@ -63,9 +69,6 @@ export interface MapCenter {
   lat: number;
 }
 
-/** Average urban travel speed used for duration estimation */
-const AVG_URBAN_SPEED_KMH = 30;
-
 /**
  * Haversine distance in km between two [lat, lng] points.
  */
@@ -85,29 +88,38 @@ function haversineKm(
 }
 
 /**
- * Estimate travel duration in minutes from distance in km.
- */
-function estimateDurationMin(distanceKm: number): number {
-  return Math.round((distanceKm / AVG_URBAN_SPEED_KMH) * 60);
-}
-
-/**
- * Compute segment distances + durations for a daily plan
- * when the backend doesn't ship them (fallback for legacy data).
+ * Backfill per-day segments when the backend didn't ship them. Existing
+ * segments are coerced to a supported mode (so legacy trips without a
+ * `mode` field still show chips).
  */
 function backfillSegments(plan: DailyPlan): DailyPlan {
-  if (plan.segments && plan.segments.length > 0) return plan;
+  if (plan.segments && plan.segments.length > 0) {
+    // Backend sometimes omits `mode` on very short or Amap-failed legs
+    // (legacy data). Coerce to a supported value here so the UI never
+    // shows a blank chip. Don't touch segments the user has already
+    // overridden in this session — `setSegmentMode` always sets a real
+    // value, so this only fills in `undefined`.
+    return {
+      ...plan,
+      segments: plan.segments.map((s) => ({
+        ...s,
+        mode: coerceMode(s.mode, s.distance_km ?? 0),
+      })),
+    };
+  }
   const segments: RouteSegment[] = [];
   for (let i = 0; i < plan.pois.length - 1; i++) {
     const from = plan.pois[i];
     const to = plan.pois[i + 1];
     if (from?.lat != null && from?.lng != null && to?.lat != null && to?.lng != null) {
       const distance_km = haversineKm(from, to);
+      const mode = defaultModeFor(distance_km);
       segments.push({
         from_poi_id: from.id,
         to_poi_id: to.id,
         distance_km,
-        duration_min: estimateDurationMin(distance_km),
+        duration_min: estimateDurationByMode(distance_km, mode),
+        mode,
       });
     }
   }
@@ -158,12 +170,18 @@ export const useMapStore = defineStore("map", () => {
     routes.value.reduce((acc, r) => acc + (r.total_distance_km ?? 0), 0),
   );
 
-  /** Sum of travel duration across all days (minutes) */
+  /** Sum of travel duration across all days (minutes).
+   *  Per-segment duration falls back to a mode-aware estimate
+   *  (walking 5 / driving 30 / transit 20 km/h) so the total stays in sync
+   *  with whatever the user has selected in the trip panel. */
   const totalDurationMin = computed<number>(() => {
     let total = 0;
     for (const r of routes.value) {
-      for (const seg of r.segments ?? []) {
-        total += seg.duration_min ?? estimateDurationMin(seg.distance_km ?? 0);
+      for (let i = 0; i < (r.segments?.length ?? 0); i++) {
+        const seg = r.segments![i];
+        const km = seg.distance_km ?? 0;
+        const mode = coerceMode(seg.mode, km);
+        total += seg.duration_min ?? estimateDurationByMode(km, mode);
       }
     }
     return total;
@@ -304,6 +322,37 @@ export const useMapStore = defineStore("map", () => {
     transportMode.value = mode;
   }
 
+  /**
+   * Persist a user-selected transport mode for a single segment and
+   * recompute its `duration_min` from the mode's average speed.
+   * Mutates the reactive `routes` array in place so Vue components and
+   * the map renderer pick up the change without an extra watcher.
+   */
+  function setSegmentMode(
+    day: number,
+    segIndex: number,
+    mode: TransportMode,
+  ): void {
+    const plan = routes.value.find((r) => r.day === day);
+    const seg = plan?.segments?.[segIndex];
+    if (!plan || !seg) return;
+    const km = seg.distance_km ?? 0;
+    seg.mode = mode;
+    seg.duration_min = estimateDurationByMode(km, mode);
+  }
+
+  /**
+   * Read the effective mode for a segment, falling back to
+   * `defaultModeFor(distance_km)` then to `'driving'` when the segment
+   * is missing entirely. Never returns undefined and never trusts an
+   * unknown mode string from the backend.
+   */
+  function getSegmentMode(day: number, segIndex: number): TransportMode {
+    const seg = routes.value.find((r) => r.day === day)?.segments?.[segIndex];
+    if (!seg) return 'driving';
+    return coerceMode(seg.mode, seg.distance_km ?? 0);
+  }
+
   function setBasemapLayer(layer: 'standard' | 'satellite'): void {
     basemapLayer.value = layer;
   }
@@ -352,6 +401,8 @@ export const useMapStore = defineStore("map", () => {
     setPoiPanelOpen,
     togglePoiPanel,
     setTransportMode,
+    setSegmentMode,
+    getSegmentMode,
     setBasemapLayer,
   };
 });
