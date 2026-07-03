@@ -12,7 +12,7 @@ import { useTripStore } from '@/stores/trip'
 import { loadAMap } from '@/utils/amap'
 
 // ── Constants ───────────────────────────────────────────────────────────────
-const DEFAULT_CENTER: [number, number] = [116.4, 39.9]  // [lng, lat] — Amap order
+const DEFAULT_CENTER: [number, number] = [118.08, 24.48]  // 厦门市中心 [lng, lat] — Amap order
 const DEFAULT_ZOOM = 12
 
 // ── Store ────────────────────────────────────────────────────────────────────
@@ -142,16 +142,18 @@ function locateUser(): void {
 const basemapLayer = computed(() => mapStore.basemapLayer)
 let _satelliteLayer: InstanceType<typeof AMap.TileLayer.Satellite> | null = null
 
-/** Hide Amap's Nebula label overlays (POI text, road names) on the map.
- *  Used when satellite is active — the user wants a clean aerial image. */
+/** Toggle Nebula label overlays (POI text, road names) without detaching
+ *  the layers from the map. We use hide()/show() rather than setMap(null)
+ *  because Nebula's label cache is destroyed when a LabelsLayer is detached
+ *  — reattaching produces a label-less vector basemap on the way back. */
 function setLabelsVisible(visible: boolean): void {
   const map = amapMap.value
   if (!map) return
-  const labelsLayers: any[] = (map as any).getLayers?.() ?? []
-  for (const layer of labelsLayers) {
+  for (const layer of (map as any).getLayers?.() ?? []) {
     const name = layer?.CLASS_NAME || layer?.constructor?.name || ''
     if (name.includes('LabelsLayer')) {
-      layer.setMap?.(visible ? map : null)
+      if (visible) layer.show?.()
+      else layer.hide?.()
     }
   }
 }
