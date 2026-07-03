@@ -1,14 +1,14 @@
 /**
  * RouteLayerRenderer — draws daily route polylines on an Amap v2 map.
  *
- * Each day gets:
- *   - A white-outline polyline (thicker, semi-transparent)
- *   - A coloured route polyline with ``showDir: true`` for direction arrows
- *   - Numbered stop markers (circle HTML markers)
+ * For each visible day:
+ *   - If the plan carries per-segment data (segments[]), each segment is
+ *     drawn independently so a walking leg can render as a same-colour dashed
+ *     line while driving / transit legs stay solid.
+ *   - Otherwise we fall back to the day-level `polyline` as a single solid
+ *     line — same behaviour as before this change.
  *
- * Why pure JS instead of Vue? Amap's overlay API is imperative (``map.add()``)
- * and does not map cleanly to Vue's declarative template model. We minimise
- * the reactive surface to ``setRoutes`` / ``setActiveDay``.
+ * Numbered stop markers continue to be drawn per POI, untouched.
  */
 
 // @ts-nocheck — AMap is loaded dynamically, types are not available at compile time
@@ -18,6 +18,9 @@ import { DAY_COLORS } from '@/utils/constants'
 // ── Constants ──────────────────────────────────────────────────────────────
 const ACTIVE_OPACITY = 0.92
 const LINE_WEIGHT_ACTIVE = 5
+
+/** Modes that should render as a dashed line on the map. */
+const DASHED_MODES = new Set(['walking'])
 
 // ── Polyline decoder ───────────────────────────────────────────────────────
 function decodeAmapPolyline(polyline) {
@@ -46,6 +49,71 @@ function buildStopContent(color, num, position) {
     color:#fff;font-size:11px;font-weight:700;
     border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);
   ">${num}</div>`
+}
+
+/** Two-point straight line between adjacent POIs, used when a segment
+ *  has no polyline of its own *and* the whole-day polyline is also empty. */
+function fallbackCoordsForSegment(pois, index) {
+  const from = pois[index]
+  const to = pois[index + 1]
+  if (!from || !to) return []
+  if (typeof from.lng !== 'number' || typeof from.lat !== 'number') return []
+  if (typeof to.lng !== 'number' || typeof to.lat !== 'number') return []
+  return [
+    [from.lng, from.lat],
+    [to.lng, to.lat],
+  ]
+}
+
+/** Slice a per-day polyline into the i-th sub-segment (POI[i] → POI[i+1]).
+ *
+ *  The backend's `submit_plan.route_one_day` only returns one full-day
+ *  polyline; per-segment polylines are usually empty. We split the day
+ *  polyline at the position of POI[i+1] so each segment still shows the
+ *  real road path rather than collapsing to a straight POI→POI line.
+ *
+ *  Matching strategy: walk the day coords, find the index of the coord
+ *  closest to POI[i+1] and the index of the coord closest to POI[i] (i.e.
+ *  the start of the *next* sub-segment, or the day end), then return the
+ *  slice between them. */
+function sliceDayPolylineForSegment(dayCoords, pois, index) {
+  if (dayCoords.length < 2 || pois.length < 2) return []
+
+  const from = pois[index]
+  const to = pois[index + 1]
+  if (!from || !to) return []
+  if (typeof from.lng !== 'number' || typeof to.lng !== 'number') return []
+
+  // The full-day polyline visits each POI *in order*. The first coord
+  // matches POI[0]; the last matches POI[pois.length-1]. We pick the index
+  // of the coord closest to POI[index] (the segment start) and closest
+  // to POI[index+1] (the segment end).
+  const startIdx = nearestCoordIndex(dayCoords, from.lng, from.lat)
+  const endIdx = nearestCoordIndex(dayCoords, to.lng, to.lat)
+
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+    return []
+  }
+
+  // Include one trailing coord at POI[index+1] so the drawn line ends
+  // exactly on the stop marker.
+  return dayCoords.slice(startIdx, endIdx + 1)
+}
+
+function nearestCoordIndex(coords, lng, lat) {
+  let best = -1
+  let bestDist = Infinity
+  for (let i = 0; i < coords.length; i++) {
+    const c = coords[i]
+    const dx = c[0] - lng
+    const dy = c[1] - lat
+    const d = dx * dx + dy * dy
+    if (d < bestDist) {
+      bestDist = d
+      best = i
+    }
+  }
+  return best
 }
 
 // ── Class ──────────────────────────────────────────────────────────────────
@@ -184,45 +252,50 @@ export class RouteLayerRenderer {
       const color = getDayColor(plan.day)
       const pois = plan.pois ?? []
 
-      // ── Polyline ──────────────────────────────────────────────────────────
-      let coords = decodeAmapPolyline(plan.polyline ?? '')
-      if (coords.length < 2 && pois.length >= 2) {
-        coords = pois
-          .filter((p) => typeof p.lng === 'number' && typeof p.lat === 'number')
-          .map((p) => [p.lng, p.lat])
-      }
+      // ── Polylines — per-segment with fallback to whole-day polyline ───
+      const segments = plan.segments ?? []
+      const drawWholeDayFallback = segments.length === 0
 
-      if (coords.length >= 2) {
-        // White outline (underneath)
-        const outline = new this._AMap.Polyline({
-          path: coords,
-          strokeColor: '#ffffff',
-          strokeWeight: LINE_WEIGHT_ACTIVE + 4,
-          strokeOpacity: 0.9,
-          lineJoin: 'round',
-          lineCap: 'round',
-          isOutline: false,
-          showDir: false,
-          zIndex: 10,
-        })
-        this._map.add(outline)
-        this._lines.push(outline)
+      if (drawWholeDayFallback) {
+        let coords = decodeAmapPolyline(plan.polyline ?? '')
+        if (coords.length < 2 && pois.length >= 2) {
+          coords = pois
+            .filter((p) => typeof p.lng === 'number' && typeof p.lat === 'number')
+            .map((p) => [p.lng, p.lat])
+        }
+        if (coords.length >= 2) {
+          this._drawSegment(coords, color, 'driving', false)
+        }
+      } else {
+        // Pre-decode the full-day polyline once so we can slice per
+        // segment when the backend didn't ship a per-segment polyline.
+        const dayCoords = decodeAmapPolyline(plan.polyline ?? '')
 
-        // Coloured route line with DIRECTION ARROWS — the key feature
-        const routeLine = new this._AMap.Polyline({
-          path: coords,
-          strokeColor: color,
-          strokeWeight: LINE_WEIGHT_ACTIVE,
-          strokeOpacity: ACTIVE_OPACITY,
-          lineJoin: 'round',
-          lineCap: 'round',
-          showDir: true,
-          dirColor: color,
-          dirImg: undefined,  // use Amap's built-in arrow
-          zIndex: 11,
-        })
-        this._map.add(routeLine)
-        this._lines.push(routeLine)
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i]
+          const mode = seg?.mode ?? 'driving'
+
+          // 1) Per-segment polyline (richest source — kept for future
+          //    backends that ship it).
+          let segCoords = decodeAmapPolyline(seg?.polyline ?? '')
+
+          // 2) Slice the full-day polyline between POI[i] and POI[i+1].
+          //    This is the common case today: the backend's
+          //    `submit_plan.route_one_day` only stores one full-day
+          //    polyline, so each segment must be carved out of it.
+          if (segCoords.length < 2 && dayCoords.length >= 2) {
+            segCoords = sliceDayPolylineForSegment(dayCoords, pois, i)
+          }
+
+          // 3) Last resort: straight line between the two POIs.
+          if (segCoords.length < 2) {
+            segCoords = fallbackCoordsForSegment(pois, i)
+          }
+
+          if (segCoords.length >= 2) {
+            this._drawSegment(segCoords, color, mode, false)
+          }
+        }
       }
 
       // ── Stop markers ─────────────────────────────────────────────────────
@@ -250,6 +323,59 @@ export class RouteLayerRenderer {
         this._markers.push(marker)
       }
     }
+  }
+
+  /**
+   * Draw one polyline with a white outline + coloured stroke. Walking
+   * segments render as `dashed` (with `strokeDasharray` as a fallback for
+   * older Amap versions); every other mode renders solid.
+   *
+   * @param {[number, number][]} coords  Amap [lng, lat] pairs
+   * @param {string} color               Hex stroke colour
+   * @param {string} mode                'walking' | 'driving' | 'transit'
+   * @param {boolean} _isOutline         Kept for future use; outline layer
+   *                                     is always drawn white beneath.
+   */
+  _drawSegment(coords, color, mode, _isOutline) {
+    const dashed = DASHED_MODES.has(mode)
+    const dashConfig = dashed
+      ? { strokeStyle: 'dashed', strokeDasharray: [8, 6] }
+      : { strokeStyle: 'solid' }
+
+    // White outline (underneath)
+    const outline = new this._AMap.Polyline({
+      path: coords,
+      strokeColor: '#ffffff',
+      strokeWeight: LINE_WEIGHT_ACTIVE + 4,
+      strokeOpacity: 0.9,
+      lineJoin: 'round',
+      lineCap: 'round',
+      isOutline: false,
+      showDir: false,
+      zIndex: 10,
+      // Outlines never need dashing — keeps the white halo continuous.
+      strokeStyle: 'solid',
+      strokeDasharray: undefined,
+    })
+    this._map.add(outline)
+    this._lines.push(outline)
+
+    // Coloured route line with DIRECTION ARROWS — the key feature
+    const routeLine = new this._AMap.Polyline({
+      path: coords,
+      strokeColor: color,
+      strokeWeight: LINE_WEIGHT_ACTIVE,
+      strokeOpacity: ACTIVE_OPACITY,
+      lineJoin: 'round',
+      lineCap: 'round',
+      showDir: true,
+      dirColor: color,
+      dirImg: undefined,  // use Amap's built-in arrow
+      zIndex: 11,
+      ...dashConfig,
+    })
+    this._map.add(routeLine)
+    this._lines.push(routeLine)
   }
 
   /**

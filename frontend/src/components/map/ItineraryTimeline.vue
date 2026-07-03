@@ -2,28 +2,21 @@
 import { computed } from "vue";
 import { useMapStore, type DailyPlan, type RoutePOI } from "@/stores/map";
 import { DAY_COLORS } from "@/utils/constants";
+import {
+  estimateDuration,
+  formatDistance,
+  formatDuration,
+  MODE_META,
+  type TransportMode,
+} from "@/utils/format";
 
 // ── Store ────────────────────────────────────────────────────────────────────
 const mapStore = useMapStore();
 
 // ── Transport mode helpers ───────────────────────────────────────────────────
-function modeIcon(mode: string): string {
-  const icons: Record<string, string> = {
-    driving: '🚗',
-    walking: '🚶',
-    bicycling: '🚴',
-    transit: '🚌',
-  }
-  return icons[mode] || ''
-}
-function modeLabel(mode: string): string {
-  const labels: Record<string, string> = {
-    driving: '驾车',
-    walking: '步行',
-    bicycling: '骑行',
-    transit: '公交',
-  }
-  return labels[mode] || mode
+// MODE_META is the single source of truth (see utils/format.ts).
+function modeMeta(mode: string): { icon: string; label: string } {
+  return MODE_META[mode as TransportMode] ?? { icon: '🚶', label: mode };
 }
 
 // ── Derived data ─────────────────────────────────────────────────────────────
@@ -55,19 +48,6 @@ function getDayColor(day: number): string {
     if (day < 1) return DAY_COLORS[0];
     const idx = Math.min(day - 1, DAY_COLORS.length - 1);
     return DAY_COLORS[idx];
-}
-
-function formatDistance(km: number): string {
-    if (km < 1) return `${Math.round(km * 1000)}m`;
-    return `${km.toFixed(1)}km`;
-}
-
-function formatDuration(min: number): string {
-    if (!min || min < 1) return "—";
-    if (min < 60) return `${min} min`;
-    const h = Math.floor(min / 60);
-    const m = min % 60;
-    return m === 0 ? `${h} hr` : `${h}h ${m}m`;
 }
 
 function onSelectPOI(poi: RoutePOI, day: number): void {
@@ -287,8 +267,8 @@ function formatTimeSlot(slot: string | undefined): string {
                             >
                                 <span class="itin__stop-next-rule"></span>
                                 <span v-if="plan.segments[idx]?.mode" class="itin__chip itin__chip--mode">
-                                    {{ modeIcon(plan.segments[idx]?.mode ?? '') }}
-                                    {{ modeLabel(plan.segments[idx]?.mode ?? '') }}
+                                    {{ modeMeta(plan.segments[idx]?.mode ?? '').icon }}
+                                    {{ modeMeta(plan.segments[idx]?.mode ?? '').label }}
                                 </span>
                                 <span class="numeric">{{
                                     formatDistance(
@@ -299,11 +279,11 @@ function formatTimeSlot(slot: string | undefined): string {
                                 <span>{{
                                     formatDuration(
                                         plan.segments[idx]?.duration_min ??
-                                            Math.round(
-                                                ((plan.segments[idx]
-                                                    ?.distance_km ?? 0) /
-                                                    30) *
-                                                    60,
+                                            estimateDuration(
+                                                plan.segments[idx]
+                                                    ?.distance_km ?? 0,
+                                                (plan.segments[idx]?.mode ??
+                                                    'driving') as TransportMode,
                                             ),
                                     )
                                 }}</span>
