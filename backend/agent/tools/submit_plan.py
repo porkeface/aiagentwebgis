@@ -311,8 +311,14 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
                 mode = "walking" if dist_km <= WALK_THRESHOLD_KM else "driving"
 
                 if mode == "walking" and dist_km < 0.05:
-                    # Same building / very close — skip API, just walk 1 min
-                    all_segments.append({"distance_km": round(dist_km, 2), "duration_min": 1})
+                    # Same building / very close — skip API, just walk 1 min.
+                    # Always emit the `mode` field so the UI's per-segment
+                    # chip never falls back silently to "unknown".
+                    all_segments.append({
+                        "distance_km": round(dist_km, 2),
+                        "duration_min": 1,
+                        "mode": "walking",
+                    })
                     continue
 
                 try:
@@ -349,8 +355,13 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
 
 
 def _fallback_leg(segments: list[dict[str, Any]], straight_km: float) -> None:
-    """Haversine-based leg when Amap call fails for a single pair."""
+    """Haversine-based leg when Amap call fails for a single pair.
+
+    Distance and duration match the backend's walking pace (~5 km/h),
+    so we tag the leg with `mode="walking"` to keep the UI consistent.
+    """
     segments.append({
         "distance_km": round(straight_km, 2),
         "duration_min": round(straight_km * 12, 1),  # walking pace ~5 km/h
+        "mode": "walking",
     })
