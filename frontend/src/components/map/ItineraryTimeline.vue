@@ -18,6 +18,14 @@ const mapStore = useMapStore();
 function modeMeta(mode: string): { icon: string; label: string } {
   return MODE_META[mode as TransportMode] ?? { icon: '🚶', label: mode };
 }
+const MODE_OPTIONS: readonly TransportMode[] = ['walking', 'driving', 'transit'];
+
+function getSegmentMode(day: number, idx: number): TransportMode {
+  return mapStore.getSegmentMode(day, idx);
+}
+function onSegmentModeChange(day: number, idx: number, m: TransportMode): void {
+  mapStore.setSegmentMode(day, idx, m);
+}
 
 // ── Derived data ─────────────────────────────────────────────────────────────
 const dailyPlans = computed<DailyPlan[]>(() =>
@@ -266,10 +274,29 @@ function formatTimeSlot(slot: string | undefined): string {
                                 class="itin__stop-next"
                             >
                                 <span class="itin__stop-next-rule"></span>
-                                <span v-if="plan.segments[idx]?.mode" class="itin__chip itin__chip--mode">
-                                    {{ modeMeta(plan.segments[idx]?.mode ?? '').icon }}
-                                    {{ modeMeta(plan.segments[idx]?.mode ?? '').label }}
-                                </span>
+                                <div
+                                    class="mode-group"
+                                    role="radiogroup"
+                                    :aria-label="`${plan.pois[idx]?.name ?? ''} 到下一站的交通方式`"
+                                >
+                                    <button
+                                        v-for="m in MODE_OPTIONS"
+                                        :key="m"
+                                        type="button"
+                                        role="radio"
+                                        :aria-checked="getSegmentMode(plan.day, idx) === m"
+                                        class="mode-group__opt"
+                                        :class="{
+                                            'mode-group__opt--active': getSegmentMode(plan.day, idx) === m,
+                                            [`mode-group__opt--${m}`]: true,
+                                        }"
+                                        :title="`切到 ${MODE_META[m].label}（≈${formatDuration(estimateDuration(plan.segments[idx]?.distance_km ?? 0, m))}）`"
+                                        @click="onSegmentModeChange(plan.day, idx, m)"
+                                    >
+                                        <span class="mode-group__icon">{{ MODE_META[m].icon }}</span>
+                                        <span class="mode-group__label">{{ MODE_META[m].label }}</span>
+                                    </button>
+                                </div>
                                 <span class="numeric">{{
                                     formatDistance(
                                         plan.segments[idx]?.distance_km ?? 0,
@@ -693,12 +720,48 @@ function formatTimeSlot(slot: string | undefined): string {
     border-color: rgba(126, 148, 112, 0.25);
 }
 
-.itin__chip--mode {
-    color: var(--color-accent);
-    background: rgba(59, 130, 246, 0.08);
-    border-color: rgba(59, 130, 246, 0.2);
-    font-size: 0.7rem;
+/* ── Inline segregated mode switcher (replaces single .itin__chip--mode) ── */
+.mode-group {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--color-bg-overlay);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-pill);
+    flex-shrink: 0;
 }
+.mode-group__opt {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+}
+.mode-group__opt:hover {
+    color: var(--color-text-primary);
+    background: rgba(0, 0, 0, 0.04);
+}
+.mode-group__opt--walking.mode-group__opt--active {
+    background: rgba(126, 148, 112, 0.85);
+    color: #fff;
+}
+.mode-group__opt--driving.mode-group__opt--active {
+    background: rgba(59, 130, 246, 0.85);
+    color: #fff;
+}
+.mode-group__opt--transit.mode-group__opt--active {
+    background: rgba(232, 98, 60, 0.85);
+    color: #fff;
+}
+.mode-group__icon { font-size: 11px; }
 
 .itin__stop-next {
     display: flex;
