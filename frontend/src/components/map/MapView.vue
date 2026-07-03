@@ -137,9 +137,30 @@ function locateUser(): void {
       }
 
       const [gcjLng, gcjLat] = _wgsToGcj(wgsLng, wgsLat)
-      _applyLoc(gcjLng, gcjLat)
 
-      function _applyLoc(_lng: number, _lat: number) {
+      const loc = { lng: gcjLng, lat: gcjLat }
+      userLocation.value = loc
+      if (amapMap.value) {
+        amapMap.value.setZoomAndCenter(15, [loc.lng, loc.lat])
+      }
+      if (amapSDK.value) {
+        if (geoMarker.value) amapMap.value?.remove(geoMarker.value)
+        const marker = new amapSDK.value.Marker({
+          position: [loc.lng, loc.lat],
+          content: `<div style="
+            width:16px;height:16px;
+            background:#4285f4;border-radius:50%;
+            border:3px solid #fff;
+            box-shadow:0 0 12px rgba(66,133,244,0.6);
+            animation:geo-pulse 1.8s ease-out infinite;
+          "></div>`,
+          offset: new amapSDK.value.Pixel(-8, -8),
+          zIndex: 600,
+        })
+        amapMap.value?.add(marker)
+        geoMarker.value = marker
+      }
+    },
     (err) => {
       if (err.code === 1) {
         ElMessage.warning('位置获取被拒绝，请在浏览器设置中允许定位')
