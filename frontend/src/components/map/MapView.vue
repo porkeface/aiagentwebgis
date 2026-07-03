@@ -142,6 +142,20 @@ function locateUser(): void {
 const basemapLayer = computed(() => mapStore.basemapLayer)
 let _satelliteLayer: InstanceType<typeof AMap.TileLayer.Satellite> | null = null
 
+/** Hide Amap's Nebula label overlays (POI text, road names) on the map.
+ *  Used when satellite is active — the user wants a clean aerial image. */
+function setLabelsVisible(visible: boolean): void {
+  const map = amapMap.value
+  if (!map) return
+  const labelsLayers: any[] = (map as any).getLayers?.() ?? []
+  for (const layer of labelsLayers) {
+    const name = layer?.CLASS_NAME || layer?.constructor?.name || ''
+    if (name.includes('LabelsLayer')) {
+      layer.setMap?.(visible ? map : null)
+    }
+  }
+}
+
 function toggleBasemap(): void {
   const map = amapMap.value
   const AMap = amapSDK.value
@@ -153,11 +167,15 @@ function toggleBasemap(): void {
       _satelliteLayer = new AMap.TileLayer.Satellite()
     }
     map.add(_satelliteLayer)
+    // Hide POI/road text labels so the satellite view is a clean aerial image
+    setLabelsVisible(false)
   } else {
     mapStore.setBasemapLayer('standard')
     if (_satelliteLayer) {
       map.remove(_satelliteLayer)
     }
+    // Restore labels when going back to vector basemap
+    setLabelsVisible(true)
   }
 }
 
