@@ -43,42 +43,6 @@ const mapCenter = computed<[number, number]>(() => {
 
 const mapZoom = computed(() => mapStore.zoom ?? DEFAULT_ZOOM)
 
-// ── Dark Mode ────────────────────────────────────────────────────────────────
-const isDark = ref(true)
-const darkModeOverride = ref<boolean | null>(null)
-
-const effectiveDark = computed(() => {
-  return darkModeOverride.value !== null ? darkModeOverride.value : isDark.value
-})
-
-const checkDarkMode = () => {
-  isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches
-}
-
-function toggleDarkMode(): void {
-  if (darkModeOverride.value === null) {
-    darkModeOverride.value = !effectiveDark.value
-  } else if (darkModeOverride.value) {
-    darkModeOverride.value = false
-  } else {
-    darkModeOverride.value = null
-  }
-}
-
-let mediaQuery: MediaQueryList | null = null
-
-onMounted(() => {
-  checkDarkMode()
-  mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-  mediaQuery.addEventListener('change', checkDarkMode)
-})
-
-onUnmounted(() => {
-  if (mediaQuery) {
-    mediaQuery.removeEventListener('change', checkDarkMode)
-  }
-})
-
 // ── Geolocation ─────────────────────────────────────────────────────────────
 const userLocation = ref<{ lng: number; lat: number } | null>(null)
 const geoMarker = shallowRef<AMap.Marker | null>(null)
@@ -176,7 +140,6 @@ function locateUser(): void {
 
 // ── Layer switch ─────────────────────────────────────────────────────────────
 const basemapLayer = computed(() => mapStore.basemapLayer)
-let _tileLayer: InstanceType<typeof AMap.TileLayer> | null = null
 let _satelliteLayer: InstanceType<typeof AMap.TileLayer.Satellite> | null = null
 
 function toggleBasemap(): void {
@@ -189,13 +152,12 @@ function toggleBasemap(): void {
     if (!_satelliteLayer) {
       _satelliteLayer = new AMap.TileLayer.Satellite()
     }
-    map.setLayers([_satelliteLayer])
+    map.add(_satelliteLayer)
   } else {
     mapStore.setBasemapLayer('standard')
-    if (!_tileLayer) {
-      _tileLayer = new AMap.TileLayer()
+    if (_satelliteLayer) {
+      map.remove(_satelliteLayer)
     }
-    map.setLayers([_tileLayer])
   }
 }
 
@@ -364,7 +326,7 @@ function onPOIsClick(): void {
 </script>
 
 <template>
-  <div class="map-container" :class="{ 'dark-mode': effectiveDark }">
+  <div class="map-container">
     <div id="amap-container" class="amap-container"></div>
 
     <!-- Top-left: segmented nav bar -->
@@ -409,7 +371,6 @@ function onPOIsClick(): void {
         <span class="map-navbar__badge numeric">{{ mapStore.poiCount }}</span>
       </button>
     </div>
-    </div>
 
     <!-- 历史规划 panel -->
     <div v-if="activePanel === 'trips'" class="map-panel">
@@ -447,19 +408,6 @@ function onPOIsClick(): void {
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="12" cy="12" r="3" />
           <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke-linecap="round" />
-        </svg>
-      </button>
-      <button
-        class="map-controls__btn"
-        :title="effectiveDark ? '切换浅色' : '切换深色'"
-        @click="toggleDarkMode"
-      >
-        <svg v-if="effectiveDark" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke-linecap="round" />
-        </svg>
-        <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke-linejoin="round" />
         </svg>
       </button>
     </div>
@@ -517,8 +465,6 @@ function onPOIsClick(): void {
       :accent-color="selectedPOIContext?.dayColor ?? '#e8623c'"
       @close="onPOICardClose"
     />
-
-    <div class="map-vignette" aria-hidden="true"></div>
   </div>
 </template>
 
@@ -720,7 +666,11 @@ function onPOIsClick(): void {
   border: 2px solid var(--color-bg-elevated);
 }
 
-/* Vignette */
+/* Vignette overlay removed 2026-07-04 — Amap's native mapStyle now controls
+   the colour scheme, so layering a CSS gradient on top was creating a
+   "muddy" look and was easy to mistake for a separate dark mode. Left here
+   commented out in case we want a subtle texture overlay later.
+
 .map-vignette {
   position: absolute;
   inset: 0;
@@ -748,6 +698,7 @@ function onPOIsClick(): void {
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.4 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
+*/
 
 /* Hide Amap attribution logo — our brand mark replaces it */
 :deep(.amap-logo),
