@@ -103,37 +103,36 @@ function locateUser(): void {
       const wgsLng = pos.coords.longitude
       const wgsLat = pos.coords.latitude
 
-      let lng = wgsLng
-      let lat = wgsLat
+      // Convert WGS-84 → GCJ-02 using Amap's REST API (JS API convertFrom
+      // requires a web-service level key which our JS API key doesn't have).
+      _applyLocWithConvert(wgsLng, wgsLat)
 
-      if (amapSDK.value) {
+      async function _applyLocWithConvert(_wgsLng: number, _wgsLat: number) {
+        let lng = _wgsLng
+        let lat = _wgsLat
         try {
-          // AMap.convertFrom converts from WGS-84/GPS to GCJ-02
-          amapSDK.value.convertFrom([wgsLng, wgsLat], 'gps', (_status: string, result: any) => {
-            if (result && result.locations) {
-              lng = result.locations[0].lng
-              lat = result.locations[0].lat
-            }
-            _applyLoc(lng, lat)
-          })
-          return
+          const url =
+            `https://restapi.amap.com/v3/assistant/coordinate/convert` +
+            `?locations=${_wgsLng},${_wgsLat}&coordsys=gps&output=json` +
+            `&key=${(import.meta as any).env?.VITE_AMAP_KEY || ''}`
+          const resp = await fetch(url)
+          const data = await resp.json()
+          if (data.status === '1' && data.locations) {
+            const converted = data.locations.split(',')
+            lng = parseFloat(converted[0])
+            lat = parseFloat(converted[1])
+          }
         } catch {
-          // Fall through to raw WGS-84
+          // Keep raw WGS-84
         }
-      }
 
-      _applyLoc(lng, lat)
-
-      function _applyLoc(_lng: number, _lat: number) {
-        const loc = { lng: _lng, lat: _lat }
+        const loc = { lng, lat }
         userLocation.value = loc
         if (amapMap.value) {
           amapMap.value.setZoomAndCenter(15, [loc.lng, loc.lat])
         }
         if (amapSDK.value) {
-          if (geoMarker.value) {
-            amapMap.value?.remove(geoMarker.value)
-          }
+          if (geoMarker.value) amapMap.value?.remove(geoMarker.value)
           const marker = new amapSDK.value.Marker({
             position: [loc.lng, loc.lat],
             content: `<div style="
