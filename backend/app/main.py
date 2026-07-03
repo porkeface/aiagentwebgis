@@ -1,6 +1,7 @@
 """FastAPI application factory with middleware and router wiring."""
 
 import asyncio
+import logging
 import time
 from collections import defaultdict, deque
 from typing import Deque
@@ -11,6 +12,9 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import router as v1_router
 from app.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------

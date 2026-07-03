@@ -1,6 +1,6 @@
 """POI search API endpoints."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
@@ -28,15 +28,28 @@ async def search_pois_endpoint(
 
     Returns paginated results with total count.
     """
-    # Parse bbox string to list of floats
+    # Parse bbox string to list of floats.  Reject malformed input with 400
+    # instead of silently dropping the spatial filter — the previous behaviour
+    # returned the full unfiltered result set and gave the client no signal
+    # that their query was bad.
     bbox_list: list[float] | None = None
     if bbox:
         try:
-            bbox_list = [float(x.strip()) for x in bbox.split(",")]
-            if len(bbox_list) != 4:
-                bbox_list = None
-        except (ValueError, AttributeError):
-            bbox_list = None
+            parts = [float(x.strip()) for x in bbox.split(",")]
+        except (ValueError, AttributeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "bbox must be four comma-separated floats: "
+                    "min_lng,min_lat,max_lng,max_lat"
+                ),
+            ) from exc
+        if len(parts) != 4:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="bbox must contain exactly 4 values: min_lng,min_lat,max_lng,max_lat",
+            )
+        bbox_list = parts
 
     result = await search_pois(
         db=db,

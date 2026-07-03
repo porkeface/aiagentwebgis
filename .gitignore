@@ -38,3 +38,22 @@ npm-debug.log*
 # Build artifacts
 .coverage
 htmlcov/
+
+# Dev artifacts — screenshots, debug logs, playwright MCP cache
+/playwright-mcp/
+/.playwright-mcp/
+/screenshot.png
+/amap-loaded.png
+/frontend-home.png
+/oneapi-pricing.png
+/backend/null
+/backend/uvicorn-*.log
+backend/uvicorn*.log
+.vite/
+
+# Untracked historical files (not part of this audit's scope)
+/backend/app/services/distance_cache.py
+/backend/app/services/oneapi_service.py
+/backend/app/services/redis_client.py
+/docs/圆周旅迹*.md
+/docs/旅游规划性能与架构改进方案.md

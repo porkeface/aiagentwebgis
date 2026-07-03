@@ -7,6 +7,7 @@ export async function sendChatMessage(
   message: string,
   sessionId: string,
   onEvent: (event: SSEEvent) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -16,9 +17,22 @@ export async function sendChatMessage(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
+  // Inner controller is the safety-net timeout. The optional caller-supplied
+  // signal is chained in via `addEventListener` so a `sendMessage` in the
+  // store can cancel an in-flight request when the user starts a new turn.
   const controller = new AbortController();
   const timeoutMs = 300_000; // 5 minutes frontend timeout
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Propagate caller aborts to the inner controller.
+  const onCallerAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
 
   try {
     const response = await fetch(`${BASE_URL}/agent/chat`, {
@@ -54,39 +68,57 @@ export async function sendChatMessage(
     const decoder = new TextDecoder();
     let buffer = "";
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
 
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
 
-      for (const part of parts) {
-        const event = parseSSEEvent(part);
+        for (const part of parts) {
+          const event = parseSSEEvent(part);
+          if (event) {
+            onEvent(event);
+          }
+        }
+      }
+
+      // Flush any remaining bytes in the decoder's buffer (B-H2 fix).
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        const event = parseSSEEvent(buffer);
         if (event) {
           onEvent(event);
         }
       }
-    }
-
-    // Flush remaining bytes
-    buffer += decoder.decode();
-    if (buffer.trim()) {
-      const event = parseSSEEvent(buffer);
-      if (event) {
-        onEvent(event);
+    } finally {
+      // Release the reader on early exit so the underlying socket is freed
+      // (otherwise a cancelled stream can hold a connection open for ~5 min).
+      try {
+        await reader.cancel();
+      } catch {
+        // best-effort
       }
     }
   } catch (err: unknown) {
     clearTimeout(timeoutId);
     if (err instanceof DOMException && err.name === "AbortError") {
-      onEvent({ type: "error", data: { message: "请求超时，请稍后重试" } });
+      // Differentiate caller abort from timeout. Caller-initiated abort
+      // (e.g. user started a new conversation) is silent — the store has
+      // already cleared its own state. Emitting an error event here would
+      // race with the new turn and briefly flash "已取消" in the UI.
+      if (!signal?.aborted) {
+        onEvent({ type: "error", data: { message: "请求超时，请稍后重试" } });
+      }
     } else {
       const message = err instanceof Error ? err.message : "网络请求失败";
       onEvent({ type: "error", data: { message } });
     }
+  } finally {
+    if (signal) signal.removeEventListener("abort", onCallerAbort);
   }
 }
 
@@ -146,6 +178,19 @@ function parseSSEEvent(raw: string): SSEEvent | null {
     "text",
     "error",
     "progress",
+    // Pipeline events (previously dropped — see B-4 audit fix)
+    "intent_detected",
+    "searching",
+    "candidates_ready",
+    "scoring",
+    "clustering",
+    "day_routing",
+    // Critic / validation events (previously dropped)
+    "critic_review",
+    "critic_result",
+    "routing",
+    "day_routed",
+    "validating",
   ];
 
   if (!validTypes.includes(type)) {

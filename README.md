@@ -84,15 +84,18 @@ JWT_SECRET_KEY=your_random_jwt_secret
 ### 2. Start Services
 
 ```bash
-docker compose up -d
+docker compose up -d                # Postgres + Redis
 ```
 
-| Service | Port | Description |
-|---------|------|-------------|
-| PostgreSQL | 5432 | Database (PostGIS) |
-| Redis | 6379 | Cache |
-| Backend | 8000 | FastAPI API server |
-| Frontend | 5173 | Vue dev server |
+| Service | Port | How to start |
+|---------|------|--------------|
+| PostgreSQL | 5432 | `docker compose up -d postgres` |
+| Redis | 6379 | `docker compose up -d redis` |
+| Backend | 8000 | `cd backend && uv run uvicorn app.main:app --reload` |
+| Frontend | 5173 | `cd frontend && npm run dev` |
+
+The backend and frontend run on the host (not in Docker) so you get hot-reload
+and direct access to logs. See the docker-compose.yml comment for the rationale.
 
 ### 3. Access
 
@@ -104,8 +107,9 @@ docker compose up -d
 ### 4. Stop
 
 ```bash
-docker compose down          # Stop services
+docker compose down          # Stop infra services
 docker compose down -v       # Stop and remove data
+# Ctrl-C to stop backend/frontend
 ```
 
 ## 📖 API Overview

@@ -17,7 +17,6 @@ from agent.tools.poi_search import search_pois, search_nearby
 from agent.tools.geocoding import geocode
 from agent.tools.route_planning import plan_route
 from agent.tools.spatial_analysis import score_pois
-from agent.tools.weather import get_weather
 from agent.tools.submit_plan import submit_plan
 from agent.tools.geo_partition import geo_partition
 
@@ -59,7 +58,6 @@ AGENT_TOOLS = [
     score_pois,
     submit_plan,
     geocode,
-    get_weather,
     geo_partition,
 ]
 
@@ -73,6 +71,5 @@ __all__ = [
     "score_pois",
     "submit_plan",
     "geocode",
-    "get_weather",
     "geo_partition",
 ]

@@ -48,7 +48,7 @@ async def get_session() -> AsyncSession:
                     await session.rollback()
                     raise
             return  # Success
-        except (ConnectionError, OSError) as e:
+        except (ConnectionError, OSError, asyncio.TimeoutError) as e:
             last_error = e
             logger.warning(
                 f"DB connection failed (attempt {attempt + 1}/{DB_MAX_RETRIES}): {e}"

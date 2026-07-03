@@ -481,7 +481,7 @@ class AmapService:
                         "polyline": "",
                     }
             except Exception:
-                pass  # cache miss or error, continue to API
+                logger.debug("Distance cache read failed, falling back to API", exc_info=True)
 
         params = {
             "origin": f"{origin[0]},{origin[1]}",
@@ -523,7 +523,7 @@ class AmapService:
                     result["distance_km"], result["duration_min"], mode,
                 )
             except Exception:
-                pass  # cache write is best-effort, non-critical
+                logger.debug("Distance cache write failed (non-critical)", exc_info=True)
 
         return result
 

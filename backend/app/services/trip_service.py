@@ -183,12 +183,14 @@ async def save_plan(
                 },
             )
             db.add(poi)
+            # Use a SAVEPOINT so a unique-index collision on THIS POI does not
+            # roll back previously-flushed POIs in the same transaction.
             try:
-                await db.flush()
+                async with db.begin_nested():
+                    await db.flush()
             except IntegrityError:
                 # Another concurrent request inserted the same amap_id first.
-                # Roll back our half-inserted row and reuse the winner.
-                await db.rollback()
+                # Re-query the winner and reuse it.
                 winner_stmt = select(POI).where(
                     POI.extra_data["amap_id"].astext == amap_id
                 )

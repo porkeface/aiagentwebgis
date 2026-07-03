@@ -101,8 +101,8 @@ async def critic_review(
         from langchain_openai import ChatOpenAI
 
         model = ChatOpenAI(
-            model="qwen-plus",
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model=settings.llm_model,
+            base_url=settings.llm_base_url,
             api_key=settings.dashscope_api_key,
             temperature=0.0,
             timeout=30,

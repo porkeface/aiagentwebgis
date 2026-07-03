@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
@@ -395,6 +395,7 @@ async def _event_generator(
     session_id: str,
     message: str,
     user_id: int | None = None,
+    http_request: Request | None = None,
 ) -> AsyncGenerator[str, None]:
     """Generate SSE events from the custom ReAct StateGraph.
 
@@ -404,6 +405,43 @@ async def _event_generator(
     """
     map_snapshot: dict[str, Any] = {"pois": [], "routes": [], "plan_summary": None}
     messages_for_db: list[dict[str, Any]] | None = None
+
+    # Stash the original task so we can cancel the agent loop when the
+    # client hangs up.  asyncio.current_task() is None outside a running loop.
+    current_task = asyncio.current_task()
+
+    async def _client_gone() -> bool:
+        """Return True if the HTTP client has disconnected."""
+        if http_request is None:
+            return False
+        try:
+            return await http_request.is_disconnected()
+        except Exception:
+            return True
+
+    # Background watcher: polls for client disconnect every 1s while astream
+    # is awaiting the next event.  The per-event check inside the async-for
+    # only fires when a node yields a chunk — if a long-running LLM call
+    # has no intermediate events for many seconds, we'd otherwise miss a
+    # disconnect until the next chunk arrives.  A 1s tick is cheap and
+    # shrinks the worst-case abort latency from "end of current step" to
+    # ~1s.
+    client_disconnected = asyncio.Event()
+    _watcher_task: asyncio.Task[None] | None = None
+    if http_request is not None and current_task is not None:
+        async def _watch_disconnect() -> None:
+            while not client_disconnected.is_set():
+                if await _client_gone():
+                    client_disconnected.set()
+                    if current_task is not None and not current_task.done():
+                        current_task.cancel()
+                    return
+                try:
+                    await asyncio.sleep(1.0)
+                except asyncio.CancelledError:
+                    return
+
+        _watcher_task = asyncio.create_task(_watch_disconnect())
 
     try:
         # Trip planning does not need checkpointing — each request is
@@ -419,15 +457,31 @@ async def _event_generator(
         initial_state = {
             "messages": [{"role": "user", "content": message}],
             "tool_call_count": 0,
+            "session_id": session_id,
         }
 
         registry = POIRegistry()
         progress = ProgressTracker()
         accumulated_text = ""
 
-        # Use astream_events for per-token streaming + node-level updates
-        async with asyncio.timeout(GRAPH_EXECUTION_TIMEOUT):
-            async for event in graph.astream_events(initial_state, config, version="v2"):
+        # Use astream_events for per-token streaming + node-level updates.
+        # Two layers of disconnect detection:
+        #  1. Per-event check below — fires whenever a node yields a chunk.
+        #  2. _watch_disconnect (started above) polls every 1s and cancels
+        #     this task if the client hangs up during a long LLM call that
+        #     hasn't emitted an event recently.
+        try:
+            async with asyncio.timeout(GRAPH_EXECUTION_TIMEOUT):
+                async for event in graph.astream_events(initial_state, config, version="v2"):
+                    if await _client_gone():
+                        logger.info(
+                            "SSE client disconnected mid-stream; aborting graph "
+                            "for session_id=%s",
+                            session_id,
+                        )
+                        if current_task is not None:
+                            current_task.cancel()
+                        return
                 kind = event.get("event", "")
                 name = event.get("name", "")
                 data = event.get("data", {})
@@ -508,10 +562,8 @@ async def _event_generator(
                             "data": custom_data,
                         })
 
-                    continue  # skip the standard event processing below
-
                 # ── Per-token text streaming ──
-                if kind == "on_chat_model_stream":
+                elif kind == "on_chat_model_stream":
                     chunk = data.get("chunk")
                     if chunk and hasattr(chunk, "content") and chunk.content:
                         accumulated_text += chunk.content
@@ -568,6 +620,15 @@ async def _event_generator(
                         summary = _build_plan_summary_event(output)
                         if summary:
                             yield summary
+        except TimeoutError:
+            logger.error(f"Agent timeout for session_id={session_id}")
+            yield _format_error_event("抱歉，AI 处理超时，请稍后重试。")
+        except ConnectionError as e:
+            logger.error(f"Agent connection error for session_id={session_id}: {e}")
+            yield _format_error_event("抱歉，服务连接失败，请检查网络后重试。")
+        except Exception as e:
+            logger.exception(f"Agent unexpected error for session_id={session_id}")
+            yield _format_error_event("抱歉，处理您的请求时出现错误，请稍后重试。")
 
         # ---- Build messages list for DB persistence ----
         messages_for_db = [
@@ -584,17 +645,17 @@ async def _event_generator(
             parsed = json.loads(final_poi_event.split("\n")[1].replace("data: ", "", 1))
             map_snapshot["pois"] = parsed.get("data", {}).get("pois", [])
 
-    except TimeoutError:
-        logger.error(f"Agent timeout for session_id={session_id}")
-        yield _format_error_event("抱歉，AI 处理超时，请稍后重试。")
-    except ConnectionError as e:
-        logger.error(f"Agent connection error for session_id={session_id}: {e}")
-        yield _format_error_event("抱歉，服务连接失败，请检查网络后重试。")
-    except Exception as e:
-        logger.exception(f"Agent unexpected error for session_id={session_id}")
-        yield _format_error_event("抱歉，处理您的请求时出现错误，请稍后重试。")
-
     finally:
+        # Always tear down the disconnect watcher — even on success, error,
+        # or cancellation.  Setting the event first makes the watcher exit
+        # its sleep on the next tick instead of waiting up to 1s.
+        client_disconnected.set()
+        if _watcher_task is not None and not _watcher_task.done():
+            _watcher_task.cancel()
+            try:
+                await _watcher_task
+            except (asyncio.CancelledError, Exception):
+                pass
         if user_id is not None and messages_for_db is not None:
             try:
                 from app.database import async_session_factory
@@ -633,6 +694,7 @@ def _now_iso() -> str:
 )
 async def chat(
     request: ChatRequest,
+    http_request: Request,
     user_id: Optional[int] = Depends(get_optional_user),
 ) -> StreamingResponse:
     """Agent chat endpoint with SSE streaming.
@@ -644,6 +706,6 @@ async def chat(
     session_id = request.session_id or str(uuid.uuid4())
 
     return StreamingResponse(
-        _event_generator(session_id, request.message, user_id),
+        _event_generator(session_id, request.message, user_id, http_request),
         media_type="text/event-stream",
     )

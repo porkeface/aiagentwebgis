@@ -22,6 +22,13 @@ export const useChatStore = defineStore("chat", () => {
   const error = ref<string | null>(null);
   const lastUserMessage = ref<string>("");
 
+  // ── In-flight SSE abort handle ──────────────────────────────────────────────
+  // Tracks the currently-active chat request so a new sendMessage() can cancel
+  // the previous one. Without this, switching conversations leaves the old SSE
+  // stream running in the background and any late poi_result events leak into
+  // the new session's map (B-5 audit fix).
+  let activeAbort: AbortController | null = null;
+
   // ── Chat history state ────────────────────────────────────────────────────
   const historySessions = ref<ChatSessionSummary[]>([]);
   const historyLoading = ref(false);
@@ -47,9 +54,21 @@ export const useChatStore = defineStore("chat", () => {
     messages.value = [...messages.value, msg];
   }
 
+  function cancelInFlight(): void {
+    if (activeAbort) {
+      activeAbort.abort();
+      activeAbort = null;
+    }
+  }
+
   // ── Actions ────────────────────────────────────────────────────────────────
   async function sendMessage(content: string): Promise<void> {
-    if (!content.trim() || loading.value) return;
+    if (!content.trim()) return;
+
+    // Cancel any previous in-flight SSE so its late events don't pollute
+    // the new turn. The user is explicitly asking a new question — even
+    // if a response is still streaming, we abort and start fresh.
+    cancelInFlight();
 
     // Store for retry
     lastUserMessage.value = content.trim();
@@ -58,6 +77,13 @@ export const useChatStore = defineStore("chat", () => {
     addMessage("user", content.trim());
     loading.value = true;
     error.value = null;
+
+    // Install a fresh AbortController for this request.  We capture a
+    // reference to it in the closure so the event handler can verify
+    // that any incoming event still belongs to the current generation —
+    // late events from an aborted request will be dropped.
+    const myAbort = new AbortController();
+    activeAbort = myAbort;
 
     // Stream the assistant response token by token.
     // Text chunks arrive in a burst from the SSE reader; we queue them and
@@ -93,6 +119,10 @@ export const useChatStore = defineStore("chat", () => {
     const mapStore = useMapStore();
 
     const handleEvent = (event: SSEEvent): void => {
+      // Generation guard: drop any event whose request has been superseded.
+      // The abort path may have flushed a trailing event before the fetch
+      // actually unblocked, and we must not let it pollute the new turn.
+      if (activeAbort !== myAbort) return;
 
       switch (event.type) {
         case "poi_result": {
@@ -213,12 +243,23 @@ export const useChatStore = defineStore("chat", () => {
     };
 
     try {
-      await sendChatMessage(content.trim(), sessionId.value, handleEvent);
+      await sendChatMessage(
+        content.trim(),
+        sessionId.value,
+        handleEvent,
+        myAbort.signal,
+      );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "发送消息失败，请稍后重试。";
       error.value = message;
     } finally {
       loading.value = false;
+      // Only clear the abort handle if we're still the active generation.
+      // A concurrent sendMessage may have already replaced activeAbort with
+      // its own controller — nulling it here would break the new turn.
+      if (activeAbort === myAbort) {
+        activeAbort = null;
+      }
     }
   }
 
@@ -319,6 +360,7 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   function startNewSession(): void {
+    cancelInFlight();
     const mapStore = useMapStore();
     resetSession();
     mapStore.clearMap();
@@ -344,6 +386,7 @@ export const useChatStore = defineStore("chat", () => {
     clearMessages,
     resetSession,
     clearError,
+    cancelInFlight,
     retryLastMessage,
     fetchHistory,
     loadSession,

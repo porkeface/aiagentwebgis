@@ -74,8 +74,6 @@ async def list_users(
     offset = (page - 1) * size
     result = await db.execute(
         select(User).order_by(User.created_at.desc()).offset(offset).limit(size)
-        if hasattr(User, "created_at")
-        else select(User).order_by(User.id.desc()).offset(offset).limit(size)
     )
     users = result.scalars().all()
 

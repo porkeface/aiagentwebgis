@@ -1,7 +1,9 @@
 """plan_day_route tool — single-day optimal driving route via Amap waypoints.
 
-Combines TSP ordering (from optimize_route) with Amap's multi-waypoint
-driving direction API to produce a real-world optimized route for a day's POIs.
+Calls Amap's multi-waypoint driving direction API to produce a real-world
+route for a day's POIs. The TSP ordering is handled internally by Amap's
+optimized_order parameter, so this tool does not depend on the (now removed)
+optimize_route helper.
 """
 
 from __future__ import annotations
@@ -10,6 +12,8 @@ import logging
 from typing import Any
 
 from langchain_core.tools import tool
+
+from agent.tools.tsp_solver import _haversine_km
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +102,6 @@ async def plan_day_route(
         }
     except Exception:
         logger.exception("plan_day_route failed for %d POIs", len(pois))
-        from agent.tools.optimize_route import _haversine_km
 
         total = 0.0
         segments: list[dict[str, Any]] = []

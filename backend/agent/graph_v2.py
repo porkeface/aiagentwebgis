@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 MAX_TOOL_CALLS = 25
 TOOL_TIMEOUT_SEC = 30
 PARALLELIZABLE_TOOLS = frozenset({
-    "search_pois", "search_nearby", "geocode", "get_weather", "score_pois",
+    "search_pois", "search_nearby", "geocode", "score_pois",
 })
 
 INTENT_CLASSIFY_PROMPT = """你是一个意图分类器。分析用户消息，判断意图类型并提取参数。

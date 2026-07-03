@@ -57,12 +57,10 @@ def _tool_label(name: str, tool_input: dict[str, Any]) -> str:
         "search_nearby": "正在搜索周边...",
         "plan_route": "正在查询路线距离...",
         "plan_day_route": "正在规划每日最优路线...",
-        "optimize_route": "正在优化访问顺序...",
         "score_pois": "正在评估 POI...",
         "submit_plan": "正在验证行程...",
         "geocode": "正在解析地址...",
         "reverse_geocode": "正在查询地址...",
-        "get_weather": "正在查询天气...",
         "geo_partition": "正在按区域分组 POI...",
     }
     return label_map.get(name, f"正在 {name}...")

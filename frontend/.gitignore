@@ -23,6 +23,18 @@ dist-ssr
 *.sln
 *.sw?
 
+# Vite — also cover .env files so VITE_* keys never land in the repo
+.env
+.env.*
+!.env.example
+.vite/
+playwright-report/
+test-results/
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
 # Playwright
 /test-results/
 /playwright-report/
