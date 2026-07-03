@@ -396,6 +396,20 @@ function onPOIsClick(): void {
         <span>行程规划</span>
       </button>
       <button
+        v-if="pois.length > 0 && !hasRoutes"
+        class="map-navbar__btn"
+        :class="{ 'is-active': mapStore.poiPanelOpen }"
+        title="兴趣点"
+        @click="onPOIsClick"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="12" cy="10" r="3" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span>兴趣点</span>
+        <span class="map-navbar__badge numeric">{{ mapStore.poiCount }}</span>
+      </button>
+      <button
         class="map-navbar__btn"
         :class="{ 'is-active': activePanel === 'trips' }"
         title="历史规划"
