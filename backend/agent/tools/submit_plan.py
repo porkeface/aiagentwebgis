@@ -263,20 +263,25 @@ def _fallback_segments(pois: list[dict[str, Any]], dp: dict[str, Any]) -> None:
 async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
     """TSP sort a single day's POIs and fetch per-leg routes.
 
-    For each adjacent POI pair we call **both** walking and driving via
-    Amap, then pick the mode whose real transit duration is shorter. This
-    avoids the "1.9 km straight-line → walk (45 min uphill) instead of
-    drive (5 min via tunnel)" problem that a blind straight-line threshold
-    creates.
+    Decision logic (per POI pair):
+
+    1. dist < 0.05 km  → same building, walk 1 min, no API
+    2. dist < 0.5 km   → walk only (call walking API; 500 m is ~5 min on foot)
+    3. dist < 1.0 km   → walk only (≤10 min on foot)
+    4. dist >= 1.0 km  → call BOTH walking + driving; pick the one with
+       shorter **real** duration from Amap (capped at 25 min walk)
+
+    This ensures we never suggest driving for a 300 m city-block hop,
+    while still defaulting to the faster real-world option for longer legs.
     """
     import math
 
     from agent.tools import get_amap
     from agent.tools.tsp_solver import solve_tsp
 
-    # Maximum walking duration (minutes) we consider acceptable. Beyond this
-    # any driving result wins regardless of straight-line distance.
-    _MAX_WALK_MIN = 25
+    # Thresholds: short → always walk; medium → compare both
+    _WALK_FORCE_KM = 1.0       # below this: walk, don't even call driving API
+    _WALK_MAX_MIN = 25         # above this walking duration: driving wins even if close
 
     def _straight_km(a: dict[str, Any], b: dict[str, Any]) -> float:
         dlat = math.radians(b["lat"] - a["lat"])
@@ -313,7 +318,6 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
                 dist_km = _straight_km(a, b)
 
                 if dist_km < 0.05:
-                    # Same building / very close — walk 1 min, no API needed.
                     all_segments.append({
                         "distance_km": round(dist_km, 2),
                         "duration_min": 1,
@@ -321,9 +325,28 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
                     })
                     continue
 
-                # Fetch BOTH walking and driving routes, then pick the
-                # shorter real duration. Falls back gracefully if one mode
-                # fails — the other still works.
+                # ---- Short leg: walking only (don't waste an API call on driving) ----
+                if dist_km < _WALK_FORCE_KM:
+                    try:
+                        route = await amap.plan_route(
+                            origin=origin, destination=destination, mode="walking",
+                        )
+                    except Exception:
+                        _fallback_leg(all_segments, dist_km)
+                        continue
+                    all_segments.append({
+                        "distance_km": round(route.get("distance_km", 0), 2),
+                        "duration_min": round(route.get("duration_min", 0), 2),
+                        "mode": "walking",
+                    })
+                    poly = route.get("polyline", "")
+                    if poly:
+                        all_polylines.append(poly)
+                    total_distance += route.get("distance_km", 0)
+                    total_transit += route.get("duration_min", 0)
+                    continue
+
+                # ---- Long leg: compare walking vs driving real durations ----
                 w_route: dict[str, Any] | None = None
                 d_route: dict[str, Any] | None = None
                 try:
@@ -346,16 +369,21 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
                 w_min = w_route.get("duration_min", 9999) if w_route else 9999
                 d_min = d_route.get("duration_min", 9999) if d_route else 9999
 
-                # Walking wins if it's within _MAX_WALK_MIN and not slower
-                # than driving. Driving wins otherwise.
-                if w_min <= d_min and w_min <= _MAX_WALK_MIN and w_route is not None:
+                # Walking wins when: it's not too slow AND (shorter duration OR
+                # within acceptable range compared to driving).
+                walk_wins = (
+                    w_route is not None
+                    and w_min <= _WALK_MAX_MIN
+                    and (w_min <= d_min or w_min <= d_min * 1.5)
+                )
+                if walk_wins:
                     best, mode = w_route, "walking"
-                elif d_min < 9999 and d_route is not None:
+                elif d_route is not None:
                     best, mode = d_route, "driving"
                 elif w_route is not None:
                     best, mode = w_route, "walking"
                 else:
-                    best, mode = d_route, "driving"
+                    best, mode = d_route, "driving"  # type: ignore[assignment]
 
                 all_segments.append({
                     "distance_km": round(best.get("distance_km", 0), 2),
