@@ -322,21 +322,18 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
                     continue
 
                 try:
-                    route = await amap.plan_route_with_waypoints(
+                    route = await amap.plan_route(
                         origin=origin, destination=destination, mode=mode,
                     )
                 except Exception:
                     _fallback_leg(all_segments, dist_km)
                     continue
 
-                seg = route.get("segments", [])
-                if seg:
-                    all_segments.extend(seg)
-                else:
-                    all_segments.append({
-                        "distance_km": route.get("distance_km", 0),
-                        "duration_min": route.get("duration_min", 0),
-                    })
+                all_segments.append({
+                    "distance_km": round(route.get("distance_km", 0), 2),
+                    "duration_min": round(route.get("duration_min", 0), 2),
+                    "mode": mode,
+                })
                 poly = route.get("polyline", "")
                 if poly:
                     all_polylines.append(poly)

@@ -482,144 +482,144 @@ async def _event_generator(
                         if current_task is not None:
                             current_task.cancel()
                         return
-                kind = event.get("event", "")
-                name = event.get("name", "")
-                data = event.get("data", {})
-
-                # ── Custom writer events (from planning pipeline) ──
-                if kind == "on_custom_event":
-                    custom_name = event.get("name", "")
-                    custom_data = event.get("data", {})
-
-                    if custom_name == "intent_detected":
-                        # Also forward the intent data so the frontend can
-                        # display the city/days that were extracted
+                    kind = event.get("event", "")
+                    name = event.get("name", "")
+                    data = event.get("data", {})
+    
+                    # ── Custom writer events (from planning pipeline) ──
+                    if kind == "on_custom_event":
+                        custom_name = event.get("name", "")
+                        custom_data = event.get("data", {})
+    
+                        if custom_name == "intent_detected":
+                            # Also forward the intent data so the frontend can
+                            # display the city/days that were extracted
+                            yield _format_sse_event("message", {
+                                "type": "intent_detected",
+                                "data": {
+                                    "content": "AI 正在分析您的需求...",
+                                    "intent": custom_data.get("intent", "unknown"),
+                                    "city": custom_data.get("city"),
+                                    "days": custom_data.get("days"),
+                                },
+                            })
+    
+                        elif custom_name == "searching":
+                            yield _format_sse_event("message", {
+                                "type": "tool_calling",
+                                "data": {"content": custom_data.get("message", "正在搜索...")},
+                            })
+    
+                        elif custom_name == "candidates_ready":
+                            pois = custom_data.get("pois", [])
+                            registry.ingest(pois)
+                            poi_event = _build_poi_result_event(registry)
+                            if poi_event:
+                                yield poi_event
+    
+                        elif custom_name == "scoring":
+                            yield _format_sse_event("message", {
+                                "type": "tool_calling",
+                                "data": {"content": custom_data.get("message", "正在评估...")},
+                            })
+    
+                        elif custom_name == "clustering":
+                            yield _format_sse_event("message", {
+                                "type": "tool_calling",
+                                "data": {"content": custom_data.get("message", "正在分区...")},
+                            })
+    
+                        elif custom_name == "day_routing":
+                            day_num = custom_data.get("day", 0)
+                            yield _format_sse_event("message", {
+                                "type": "progress",
+                                "data": {
+                                    "step": day_num,
+                                    "total": len(registry.all_pois()) or 3,
+                                    "label": custom_data.get("message", f"正在规划第{day_num}天路线..."),
+                                },
+                            })
+    
+                        elif custom_name == "route_result":
+                            route_event = _build_route_result_from_pipeline(custom_data, registry)
+                            if route_event:
+                                parsed = json.loads(route_event.split("\n")[1].replace("data: ", "", 1))
+                                map_snapshot["routes"] = parsed.get("data", {}).get("daily_plans", [])
+                                yield route_event
+    
+                        elif custom_name == "plan_summary":
+                            plan_event = _format_sse_event("message", {
+                                "type": "plan_summary",
+                                "data": custom_data,
+                            })
+                            yield plan_event
+                            p = custom_data
+                            map_snapshot["plan_summary"] = p
+    
+                        elif custom_name == "error":
+                            yield _format_sse_event("message", {
+                                "type": "error",
+                                "data": custom_data,
+                            })
+    
+                    # ── Per-token text streaming ──
+                    elif kind == "on_chat_model_stream":
+                        chunk = data.get("chunk")
+                        if chunk and hasattr(chunk, "content") and chunk.content:
+                            accumulated_text += chunk.content
+                            yield _format_sse_event("message", {
+                                "type": "text",
+                                "data": {"content": chunk.content},
+                            })
+    
+                    # ── LLM thinking start ──
+                    elif kind == "on_chat_model_start":
+                        accumulated_text = ""
                         yield _format_sse_event("message", {
-                            "type": "intent_detected",
-                            "data": {
-                                "content": "AI 正在分析您的需求...",
-                                "intent": custom_data.get("intent", "unknown"),
-                                "city": custom_data.get("city"),
-                                "days": custom_data.get("days"),
-                            },
+                            "type": "thinking",
+                            "data": {"content": "AI 正在思考..."},
                         })
-
-                    elif custom_name == "searching":
+    
+                    # ── Tool starts ──
+                    elif kind == "on_tool_start":
+                        tool_name = name or ""
+                        tool_input = data.get("input", {})
+                        label = progress.add_tool(tool_name, tool_input)
                         yield _format_sse_event("message", {
                             "type": "tool_calling",
-                            "data": {"content": custom_data.get("message", "正在搜索...")},
+                            "data": {"content": label},
                         })
-
-                    elif custom_name == "candidates_ready":
-                        pois = custom_data.get("pois", [])
-                        registry.ingest(pois)
-                        poi_event = _build_poi_result_event(registry)
-                        if poi_event:
-                            yield poi_event
-
-                    elif custom_name == "scoring":
-                        yield _format_sse_event("message", {
-                            "type": "tool_calling",
-                            "data": {"content": custom_data.get("message", "正在评估...")},
-                        })
-
-                    elif custom_name == "clustering":
-                        yield _format_sse_event("message", {
-                            "type": "tool_calling",
-                            "data": {"content": custom_data.get("message", "正在分区...")},
-                        })
-
-                    elif custom_name == "day_routing":
-                        day_num = custom_data.get("day", 0)
-                        yield _format_sse_event("message", {
+    
+                    # ── Tool ends ──
+                    elif kind == "on_tool_end":
+                        tool_name = name or ""
+                        output = data.get("output")
+    
+                        # Unwrap ToolMessage
+                        if hasattr(output, "content") and hasattr(output, "tool_call_id"):
+                            output = output.content
+                            if isinstance(output, str):
+                                try: output = json.loads(output)
+                                except (json.JSONDecodeError, TypeError): pass
+    
+                        progress.mark_complete()
+                        ev = {
                             "type": "progress",
                             "data": {
-                                "step": day_num,
-                                "total": len(registry.all_pois()) or 3,
-                                "label": custom_data.get("message", f"正在规划第{day_num}天路线..."),
+                                "step": progress.completed,
+                                "total": max(len(progress.labels), progress.completed),
+                                "label": (progress.labels[progress.completed - 1] if progress.completed <= len(progress.labels) else "处理中..."),
                             },
-                        })
-
-                    elif custom_name == "route_result":
-                        route_event = _build_route_result_from_pipeline(custom_data, registry)
-                        if route_event:
-                            parsed = json.loads(route_event.split("\n")[1].replace("data: ", "", 1))
-                            map_snapshot["routes"] = parsed.get("data", {}).get("daily_plans", [])
-                            yield route_event
-
-                    elif custom_name == "plan_summary":
-                        plan_event = _format_sse_event("message", {
-                            "type": "plan_summary",
-                            "data": custom_data,
-                        })
-                        yield plan_event
-                        p = custom_data
-                        map_snapshot["plan_summary"] = p
-
-                    elif custom_name == "error":
-                        yield _format_sse_event("message", {
-                            "type": "error",
-                            "data": custom_data,
-                        })
-
-                # ── Per-token text streaming ──
-                elif kind == "on_chat_model_stream":
-                    chunk = data.get("chunk")
-                    if chunk and hasattr(chunk, "content") and chunk.content:
-                        accumulated_text += chunk.content
-                        yield _format_sse_event("message", {
-                            "type": "text",
-                            "data": {"content": chunk.content},
-                        })
-
-                # ── LLM thinking start ──
-                elif kind == "on_chat_model_start":
-                    accumulated_text = ""
-                    yield _format_sse_event("message", {
-                        "type": "thinking",
-                        "data": {"content": "AI 正在思考..."},
-                    })
-
-                # ── Tool starts ──
-                elif kind == "on_tool_start":
-                    tool_name = name or ""
-                    tool_input = data.get("input", {})
-                    label = progress.add_tool(tool_name, tool_input)
-                    yield _format_sse_event("message", {
-                        "type": "tool_calling",
-                        "data": {"content": label},
-                    })
-
-                # ── Tool ends ──
-                elif kind == "on_tool_end":
-                    tool_name = name or ""
-                    output = data.get("output")
-
-                    # Unwrap ToolMessage
-                    if hasattr(output, "content") and hasattr(output, "tool_call_id"):
-                        output = output.content
-                        if isinstance(output, str):
-                            try: output = json.loads(output)
-                            except (json.JSONDecodeError, TypeError): pass
-
-                    progress.mark_complete()
-                    ev = {
-                        "type": "progress",
-                        "data": {
-                            "step": progress.completed,
-                            "total": max(len(progress.labels), progress.completed),
-                            "label": (progress.labels[progress.completed - 1] if progress.completed <= len(progress.labels) else "处理中..."),
-                        },
-                    }
-                    yield _format_sse_event("message", ev)
-
-                    result = _handle_tool_result(tool_name, output, registry, map_snapshot)
-                    if result:
-                        yield result
-                    if tool_name == "submit_plan" and isinstance(output, dict) and output.get("status") == "accepted":
-                        summary = _build_plan_summary_event(output)
-                        if summary:
-                            yield summary
+                        }
+                        yield _format_sse_event("message", ev)
+    
+                        result = _handle_tool_result(tool_name, output, registry, map_snapshot)
+                        if result:
+                            yield result
+                        if tool_name == "submit_plan" and isinstance(output, dict) and output.get("status") == "accepted":
+                            summary = _build_plan_summary_event(output)
+                            if summary:
+                                yield summary
         except TimeoutError:
             logger.error(f"Agent timeout for session_id={session_id}")
             yield _format_error_event("抱歉，AI 处理超时，请稍后重试。")

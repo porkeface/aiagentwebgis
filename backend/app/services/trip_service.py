@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, timedelta
 from typing import Any
@@ -227,7 +228,7 @@ async def save_plan(
             date=start_date + timedelta(days=day_plan.day - 1),
             notes=day_plan.day_title,
             polyline=day_plan.polyline,
-            segments_json=day_plan.segments,
+            segments_json=json.dumps(day_plan.segments, ensure_ascii=False) if day_plan.segments else None,
             total_distance_km=day_plan.total_distance_km,
             total_duration_min=day_plan.total_duration_min,
         )
