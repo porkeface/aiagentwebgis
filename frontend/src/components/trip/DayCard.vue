@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import type { TripDayPOI, DayPlanDetail } from '@/types'
 import { DAY_COLORS } from '@/utils/constants'
+import {
+  defaultModeFor,
+  estimateDuration,
+  formatDistance,
+  formatDuration,
+  MODE_META,
+  type TransportMode,
+} from '@/utils/format'
+import { useMapStore, type RouteSegment } from '@/stores/map'
 import { computed } from 'vue'
 
 // ── Props & Emits ──────────────────────────────────────────────────────────
@@ -15,46 +24,18 @@ const emit = defineEmits<{
   selectPOI: [poi: TripDayPOI];
 }>();
 
-// ── Constants ───────────────────────────────────────────────────────────────
-const AVG_SPEED_KMH = 30;
+// ── Store ──────────────────────────────────────────────────────────────────
+const mapStore = useMapStore();
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────
+/** Three-way switcher offered in the segment mode popover. Order matters —
+ *  walking first because that's the safest urban default and matches the
+ *  popover preview order. */
+const MODE_OPTIONS: readonly TransportMode[] = ['walking', 'driving', 'transit'];
 
-/**
- * Estimate travel duration in minutes from distance in km.
- */
-function estimateDuration(distanceKm: number): number {
-  return Math.round((distanceKm / AVG_SPEED_KMH) * 60);
-}
+// ── Helpers ────────────────────────────────────────────────────────────────
 
-/**
- * Format time range for display.
- */
-function formatTimeRange(arrival: string | null, departure: string | null): string {
-  if (arrival && departure) {
-    return `${arrival} – ${departure}`;
-  }
-  if (arrival) return arrival;
-  return "—";
-}
-
-/**
- * Calculate total distance for the day (sum of segment distances).
- * Uses Haversine if segment data unavailable.
- */
-function calculateTotalDistance(): number {
-  const pois = props.dayPlan.pois;
-  if (pois.length < 2) return 0;
-  let total = 0;
-  for (let i = 0; i < pois.length - 1; i++) {
-    total += haversineKm(pois[i], pois[i + 1]);
-  }
-  return total;
-}
-
-/**
- * Haversine distance between two points.
- */
+/** Haversine distance between two POIs (km). */
 function haversineKm(a: TripDayPOI, b: TripDayPOI): number {
   if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) return 0;
   const R = 6371;
@@ -68,37 +49,89 @@ function haversineKm(a: TripDayPOI, b: TripDayPOI): number {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
-// ── Computed-like derived values ────────────────────────────────────────────
-const totalDistance = computed(() => calculateTotalDistance());
-const totalDuration = computed(() => estimateDuration(totalDistance.value));
+/** Format a time range for display. */
+function formatTimeRange(
+  arrival: string | null,
+  departure: string | null,
+): string {
+  if (arrival && departure) return `${arrival} – ${departure}`;
+  if (arrival) return arrival;
+  return '—';
+}
+
+// ── Derived data ───────────────────────────────────────────────────────────
+
+/** Per-segment list, mirroring `poiDistances`. Synthesises a segment object
+ *  when the backend didn't ship one so the chip + duration always render. */
+const segments = computed<RouteSegment[]>(() => {
+  const pois = props.dayPlan.pois;
+  const out: RouteSegment[] = [];
+  for (let i = 0; i < pois.length - 1; i++) {
+    const from = pois[i];
+    const to = pois[i + 1];
+    if (from.lat == null || from.lng == null || to.lat == null || to.lng == null) {
+      continue;
+    }
+    const km = haversineKm(from, to);
+    const backendSeg = props.dayPlan.segments?.[i];
+    out.push(
+      backendSeg ?? {
+        distance_km: km,
+        duration_min: estimateDuration(km, defaultModeFor(km)),
+      },
+    );
+  }
+  return out;
+});
+
+/** Total travel distance for the day, summed from the synthesised segments
+ *  (which agree with the backend when segments are present). */
+const totalDistanceKm = computed<number>(() =>
+  segments.value.reduce((acc, s) => acc + (s.distance_km ?? 0), 0),
+);
+
+/** Total travel duration for this day only.
+ *
+ *  We deliberately sum the local segments rather than reading
+ *  `mapStore.totalDurationMin`, which is a cross-day aggregate. Each
+ *  DayCard header should show *its own* day's duration. */
+const totalDurationMin = computed<number>(() =>
+  segments.value.reduce((acc, _seg, i) => acc + getSegmentDurationMin(i), 0),
+);
 
 function getTotalDistance(): number {
-  return totalDistance.value;
+  return totalDistanceKm.value;
 }
 
 function getTotalDuration(): number {
-  return totalDuration.value;
+  return totalDurationMin.value;
 }
 
-// ── Pre-calculate distances between consecutive POIs ────────────────────────
-const poiDistances = computed(() => {
-  const pois = props.dayPlan.pois;
-  const distances: number[] = [];
-  for (let i = 0; i < pois.length - 1; i++) {
-    if (pois[i].lat != null && pois[i].lng != null && pois[i + 1].lat != null && pois[i + 1].lng != null) {
-      distances.push(haversineKm(pois[i], pois[i + 1]));
-    } else {
-      distances.push(0);
-    }
-  }
-  return distances;
-});
+// ── Segment helpers ────────────────────────────────────────────────────────
+
+/** Effective mode for a segment, falling back through store → default → driving. */
+function getSegmentMode(segIndex: number): TransportMode {
+  return mapStore.getSegmentMode(props.dayNumber, segIndex);
+}
+
+/** Effective duration for a segment (minutes). */
+function getSegmentDurationMin(segIndex: number): number {
+  const seg = segments.value[segIndex];
+  if (!seg) return 0;
+  if (typeof seg.duration_min === 'number') return seg.duration_min;
+  return estimateDuration(seg.distance_km ?? 0, getSegmentMode(segIndex));
+}
+
+/** User picked a new mode from the popover. */
+function onModeChange(segIndex: number, mode: TransportMode): void {
+  mapStore.setSegmentMode(props.dayNumber, segIndex, mode);
+}
 
 function getPOIColor(index: number): string {
   return DAY_COLORS[index % DAY_COLORS.length]
 }
 
-// ── POI Click ───────────────────────────────────────────────────────────────
+// ── POI Click ──────────────────────────────────────────────────────────────
 function onPOIClick(poi: TripDayPOI): void {
   emit("selectPOI", poi);
 }
@@ -113,7 +146,7 @@ function onPOIClick(poi: TripDayPOI): void {
       <div class="day-meta">
         <span class="day-date">{{ dayPlan.date }}</span>
         <span class="day-stats" v-if="dayPlan.pois.length > 1">
-          {{ getTotalDistance().toFixed(1) }} km · ~{{ getTotalDuration() }} min
+          {{ formatDistance(getTotalDistance()) }} · {{ formatDuration(getTotalDuration()) }}
         </span>
       </div>
     </div>
@@ -159,17 +192,46 @@ function onPOIClick(poi: TripDayPOI): void {
           </div>
         </div>
 
-        <!-- Distance to next POI -->
+        <!-- Segment mode (segmented control, inline) + distance + duration
+             between this POI and the next. Layout: [🚶 驾车 🚌] | 260m · 1 min.
+             Click any option to switch the segment mode in place. -->
         <div
-          class="poi-distance"
-          v-if="index < poiDistances.length && poi.lat != null && poi.lng != null && dayPlan.pois[index + 1].lat != null && dayPlan.pois[index + 1].lng != null"
+          v-if="index < segments.length"
+          class="poi-segment"
+          @click.stop
         >
-          <span class="distance-label">
-            {{ poiDistances[index].toFixed(1) }} km
-          </span>
-          <span class="distance-duration">
-            ~{{ estimateDuration(poiDistances[index]) }} min
-          </span>
+          <div
+            class="mode-group"
+            role="radiogroup"
+            :aria-label="`${poi.name} 到下一站的交通方式`"
+          >
+            <button
+              v-for="m in MODE_OPTIONS"
+              :key="m"
+              type="button"
+              role="radio"
+              :aria-checked="getSegmentMode(index) === m"
+              class="mode-group__opt"
+              :class="{
+                'mode-group__opt--active': getSegmentMode(index) === m,
+                [`mode-group__opt--${m}`]: true,
+              }"
+              :title="`切到 ${MODE_META[m].label}（≈${formatDuration(estimateDuration(segments[index].distance_km ?? 0, m as TransportMode))}）`"
+              @click="onModeChange(index, m as TransportMode)"
+            >
+              <span class="mode-group__icon">{{ MODE_META[m].icon }}</span>
+              <span class="mode-group__label">{{ MODE_META[m].label }}</span>
+            </button>
+          </div>
+
+          <div class="segment-stats">
+            <span class="segment-dist">
+              {{ formatDistance(segments[index].distance_km ?? 0) }}
+            </span>
+            <span class="segment-dur">
+              {{ formatDuration(getSegmentDurationMin(index)) }}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -349,44 +411,86 @@ function onPOIClick(poi: TripDayPOI): void {
   margin-top: var(--space-xs);
 }
 
-.poi-distance {
+/* ── Segment mode (segmented control) + distance + duration ─────────── */
+.poi-segment {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   padding: var(--space-sm) var(--space-md);
   background: var(--color-bg-muted);
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
   flex-shrink: 0;
+  min-width: 200px;
 }
 
-.distance-label {
+.mode-group {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--color-bg-overlay);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-pill);
+}
+
+.mode-group__opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.mode-group__opt:hover {
+  color: var(--color-text-primary);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.mode-group__opt--walking.mode-group__opt--active {
+  background: rgba(126, 148, 112, 0.85);
+  color: #fff;
+}
+.mode-group__opt--driving.mode-group__opt--active {
+  background: rgba(59, 130, 246, 0.85);
+  color: #fff;
+}
+.mode-group__opt--transit.mode-group__opt--active {
+  background: rgba(232, 98, 60, 0.85);
+  color: #fff;
+}
+
+.mode-group__icon {
+  font-size: 13px;
+}
+
+.segment-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  line-height: 1.2;
+}
+
+.segment-dist {
   font-weight: 600;
   color: var(--color-primary);
 }
 
-.distance-duration {
+.segment-dur {
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
 }
 
-.empty-day {
-  padding: var(--space-2xl) var(--space-xl);
-  text-align: center;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-base);
-}
-
-.day-notes {
-  padding: var(--space-md) var(--space-xl);
-  background: var(--color-note-bg);
-  border-top: 1px solid var(--color-note-border);
-  font-size: 13px;
-  color: var(--color-note-text);
-}
-
-/* Responsive */
+/* ── Responsive ───────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .day-header {
     flex-direction: column;
@@ -398,9 +502,12 @@ function onPOIClick(poi: TripDayPOI): void {
     flex-wrap: wrap;
   }
 
-  .poi-distance {
+  .poi-segment {
     margin-left: 44px;
     width: calc(100% - 44px);
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-md);
   }
 }
 </style>
