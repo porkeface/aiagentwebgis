@@ -103,53 +103,43 @@ function locateUser(): void {
       const wgsLng = pos.coords.longitude
       const wgsLat = pos.coords.latitude
 
-      // Convert WGS-84 → GCJ-02 using Amap's REST API (JS API convertFrom
-      // requires a web-service level key which our JS API key doesn't have).
-      _applyLocWithConvert(wgsLng, wgsLat)
+      // Convert WGS-84 → GCJ-02 using a simple client-side algorithm.
+      // (Amap's REST convert API requires a web-service key which differs
+      // from our JS API key, and the JS API convertFrom also needs a web key)
+      const pi = Math.PI
+      const a = 6378245.0
+      const ee = 0.00669342162296594323
 
-      async function _applyLocWithConvert(_wgsLng: number, _wgsLat: number) {
-        let lng = _wgsLng
-        let lat = _wgsLat
-        try {
-          const url =
-            `https://restapi.amap.com/v3/assistant/coordinate/convert` +
-            `?locations=${_wgsLng},${_wgsLat}&coordsys=gps&output=json` +
-            `&key=${(import.meta as any).env?.VITE_AMAP_KEY || ''}`
-          const resp = await fetch(url)
-          const data = await resp.json()
-          if (data.status === '1' && data.locations) {
-            const converted = data.locations.split(',')
-            lng = parseFloat(converted[0])
-            lat = parseFloat(converted[1])
-          }
-        } catch {
-          // Keep raw WGS-84
+      function _wgsToGcj(wgsLng: number, wgsLat: number): [number, number] {
+        function _transformLat(x: number, y: number): number {
+          let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x))
+          ret += (20.0 * Math.sin(6.0 * x * pi) + 20.0 * Math.sin(2.0 * x * pi)) * 2.0 / 3.0
+          ret += (20.0 * Math.sin(y * pi) + 40.0 * Math.sin(y / 3.0 * pi)) * 2.0 / 3.0
+          ret += (160.0 * Math.sin(y / 12.0 * pi) + 320.0 * Math.sin(y * pi / 30.0)) * 2.0 / 3.0
+          return ret
         }
-
-        const loc = { lng, lat }
-        userLocation.value = loc
-        if (amapMap.value) {
-          amapMap.value.setZoomAndCenter(15, [loc.lng, loc.lat])
+        function _transformLng(x: number, y: number): number {
+          let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x))
+          ret += (20.0 * Math.sin(6.0 * x * pi) + 20.0 * Math.sin(2.0 * x * pi)) * 2.0 / 3.0
+          ret += (20.0 * Math.sin(x * pi) + 40.0 * Math.sin(x / 3.0 * pi)) * 2.0 / 3.0
+          ret += (150.0 * Math.sin(x / 12.0 * pi) + 300.0 * Math.sin(x / 30.0 * pi)) * 2.0 / 3.0
+          return ret
         }
-        if (amapSDK.value) {
-          if (geoMarker.value) amapMap.value?.remove(geoMarker.value)
-          const marker = new amapSDK.value.Marker({
-            position: [loc.lng, loc.lat],
-            content: `<div style="
-              width:16px;height:16px;
-              background:#4285f4;border-radius:50%;
-              border:3px solid #fff;
-              box-shadow:0 0 12px rgba(66,133,244,0.6);
-              animation:geo-pulse 1.8s ease-out infinite;
-            "></div>`,
-            offset: new amapSDK.value.Pixel(-8, -8),
-            zIndex: 600,
-          })
-          amapMap.value?.add(marker)
-          geoMarker.value = marker
-        }
+        const dLat = _transformLat(wgsLng - 105.0, wgsLat - 35.0)
+        const dLng = _transformLng(wgsLng - 105.0, wgsLat - 35.0)
+        const radLat = wgsLat / 180.0 * pi
+        let magic = Math.sin(radLat)
+        magic = 1.0 - ee * magic * magic
+        const sqrtMagic = Math.sqrt(magic)
+        const dLatFinal = (dLat * 180.0) / ((a * (1.0 - ee)) / (magic * sqrtMagic) * pi)
+        const dLngFinal = (dLng * 180.0) / (a / sqrtMagic * Math.cos(radLat) * pi)
+        return [wgsLng + dLngFinal, wgsLat + dLatFinal]
       }
-    },
+
+      const [gcjLng, gcjLat] = _wgsToGcj(wgsLng, wgsLat)
+      _applyLoc(gcjLng, gcjLat)
+
+      function _applyLoc(_lng: number, _lat: number) {
     (err) => {
       if (err.code === 1) {
         ElMessage.warning('位置获取被拒绝，请在浏览器设置中允许定位')
