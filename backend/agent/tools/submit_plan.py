@@ -263,17 +263,20 @@ def _fallback_segments(pois: list[dict[str, Any]], dp: dict[str, Any]) -> None:
 async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
     """TSP sort a single day's POIs and fetch per-leg routes.
 
-    Each adjacent POI pair gets its own route: walking for short hops
-    (≤2 km straight-line), driving for longer legs. This avoids the
-    "drive 3 km to go 300 m" problem when POIs are close together.
+    For each adjacent POI pair we call **both** walking and driving via
+    Amap, then pick the mode whose real transit duration is shorter. This
+    avoids the "1.9 km straight-line → walk (45 min uphill) instead of
+    drive (5 min via tunnel)" problem that a blind straight-line threshold
+    creates.
     """
     import math
 
     from agent.tools import get_amap
     from agent.tools.tsp_solver import solve_tsp
 
-    # Threshold: POIs within 2 km straight-line → walk, not drive
-    WALK_THRESHOLD_KM = 2.0
+    # Maximum walking duration (minutes) we consider acceptable. Beyond this
+    # any driving result wins regardless of straight-line distance.
+    _MAX_WALK_MIN = 25
 
     def _straight_km(a: dict[str, Any], b: dict[str, Any]) -> float:
         dlat = math.radians(b["lat"] - a["lat"])
@@ -308,12 +311,9 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
                 origin = (a["lng"], a["lat"])
                 destination = (b["lng"], b["lat"])
                 dist_km = _straight_km(a, b)
-                mode = "walking" if dist_km <= WALK_THRESHOLD_KM else "driving"
 
-                if mode == "walking" and dist_km < 0.05:
-                    # Same building / very close — skip API, just walk 1 min.
-                    # Always emit the `mode` field so the UI's per-segment
-                    # chip never falls back silently to "unknown".
+                if dist_km < 0.05:
+                    # Same building / very close — walk 1 min, no API needed.
                     all_segments.append({
                         "distance_km": round(dist_km, 2),
                         "duration_min": 1,
@@ -321,24 +321,52 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
                     })
                     continue
 
+                # Fetch BOTH walking and driving routes, then pick the
+                # shorter real duration. Falls back gracefully if one mode
+                # fails — the other still works.
+                w_route: dict[str, Any] | None = None
+                d_route: dict[str, Any] | None = None
                 try:
-                    route = await amap.plan_route(
-                        origin=origin, destination=destination, mode=mode,
+                    w_route = await amap.plan_route(
+                        origin=origin, destination=destination, mode="walking",
                     )
                 except Exception:
+                    pass
+                try:
+                    d_route = await amap.plan_route(
+                        origin=origin, destination=destination, mode="driving",
+                    )
+                except Exception:
+                    pass
+
+                if w_route is None and d_route is None:
                     _fallback_leg(all_segments, dist_km)
                     continue
 
+                w_min = w_route.get("duration_min", 9999) if w_route else 9999
+                d_min = d_route.get("duration_min", 9999) if d_route else 9999
+
+                # Walking wins if it's within _MAX_WALK_MIN and not slower
+                # than driving. Driving wins otherwise.
+                if w_min <= d_min and w_min <= _MAX_WALK_MIN and w_route is not None:
+                    best, mode = w_route, "walking"
+                elif d_min < 9999 and d_route is not None:
+                    best, mode = d_route, "driving"
+                elif w_route is not None:
+                    best, mode = w_route, "walking"
+                else:
+                    best, mode = d_route, "driving"
+
                 all_segments.append({
-                    "distance_km": round(route.get("distance_km", 0), 2),
-                    "duration_min": round(route.get("duration_min", 0), 2),
+                    "distance_km": round(best.get("distance_km", 0), 2),
+                    "duration_min": round(best.get("duration_min", 0), 2),
                     "mode": mode,
                 })
-                poly = route.get("polyline", "")
+                poly = best.get("polyline", "")
                 if poly:
                     all_polylines.append(poly)
-                total_distance += route.get("distance_km", 0)
-                total_transit += route.get("duration_min", 0)
+                total_distance += best.get("distance_km", 0)
+                total_transit += best.get("duration_min", 0)
 
             result["total_distance_km"] = round(total_distance, 2)
             result["total_transit_min"] = round(total_transit, 2)
