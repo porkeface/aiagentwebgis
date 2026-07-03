@@ -273,7 +273,6 @@ function formatTimeSlot(slot: string | undefined): string {
                                 "
                                 class="itin__stop-next"
                             >
-                                <span class="itin__stop-next-rule"></span>
                                 <div
                                     class="mode-group"
                                     role="radiogroup"
@@ -762,6 +761,9 @@ function formatTimeSlot(slot: string | undefined): string {
     color: #fff;
 }
 .mode-group__icon { font-size: 11px; }
+.itin__stop-next .mode-group {
+    margin-right: var(--space-md);
+}
 
 .itin__stop-next {
     display: flex;
