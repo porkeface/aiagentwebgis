@@ -96,6 +96,9 @@ function setupMapData(): void {
         day: day.day_number,
         pois: dayPois,
         total_distance_km: calculateDayDistance(dayPois),
+        total_duration_min: day.total_transit_min ?? undefined,
+        segments: day.segments ?? [],
+        polyline: day.polyline ?? "",
       };
     });
 
