@@ -43,9 +43,6 @@ class Settings(BaseSettings):
     # Map
     amap_api_key: str = Field(default="", description="Amap (Gaode) API key")
 
-    # Xiaohongshu / OneAPI
-    oneapi_api_key: str = Field(default="", description="OneAPI API key for Xiaohongshu search")
-
     # Security
     jwt_secret_key: str = Field(
         default="change-this-to-a-random-secret-key",

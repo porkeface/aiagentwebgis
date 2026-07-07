@@ -18,7 +18,7 @@ _ENV_PATH = _PROJECT_ROOT / ".env"
 
 # Keys whose values should be masked when exposed to the API.
 _SECRET_KEYS = {
-    "LLM_API_KEY", "ONEAPI_API_KEY", "AMAP_API_KEY",
+    "LLM_API_KEY", "AMAP_API_KEY",
     "JWT_SECRET_KEY", "DB_PASSWORD", "VITE_AMAP_KEY",
 }
 

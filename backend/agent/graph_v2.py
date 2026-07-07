@@ -292,66 +292,6 @@ async def planning_pipeline_node(
             writer=writer,
         )
 
-    # ── Step 0: Xiaohongshu guide search (DISABLED for speed — re-enable by
-    #     removing the "if False") ──────────────────────────────────────────
-    guide_info: dict[str, Any] = {"spots": [], "daily_groups": {}, "tips": []}
-    if False:  # disabled: saves ~15s (2 API + 1 LLM call), marginal quality gain
-        if settings.oneapi_api_key:
-            try:
-                writer({"type": "searching", "data": {"message": "正在搜索小红书攻略..."}})
-                from app.services.oneapi_service import OneAPIService
-
-                oneapi = OneAPIService()
-
-                # Two parallel guide searches
-                resp_guide, resp_spot = await asyncio.gather(
-                    oneapi.search_notes(keyword=f"{city}{days}日旅游攻略 路线推荐", page=1, sort_type="popularity_descending", note_type="普通笔记", time_filter="半年内"),
-                    oneapi.search_notes(keyword=f"{city}必去景点推荐 2026", page=1, sort_type="popularity_descending", note_type="普通笔记", time_filter="半年内"),
-                    return_exceptions=True,
-                )
-
-                guide_text = ""
-                if isinstance(resp_guide, dict):
-                    guide_text += oneapi.extract_guide_text(resp_guide, max_notes=8)
-                if isinstance(resp_spot, dict):
-                    guide_text += "\n\n" + oneapi.extract_guide_text(resp_spot, max_notes=8)
-
-                await oneapi.close()
-
-                if guide_text.strip():
-                    # LLM extracts route info from guide text
-                    extract_prompt = f"""你是旅游攻略信息提取器。从以下小红书攻略摘要中：
-
-    1. 提取所有被推荐的景点/地点名称列表（一行一个，去重）
-    2. 如果有按天分组建议，提取分组（如"第1天：故宫+景山+南锣"）
-    3. 提取注意事项（开放时间、门票、季节提示等，每个一行）
-
-    攻略内容：
-    {guide_text[:4000]}
-
-    输出纯JSON：
-    {{"spots": ["景点名1", "景点名2"], "daily_groups": {{"第1天": ["A", "B"]}}, "tips": ["提示1", "提示2"]}}"""
-
-                    raw_model = _get_model_no_tools()
-                    extract_resp = await raw_model.ainvoke([
-                        SystemMessage(content="你是精确的旅游信息提取器，只提取攻略中明确提到的信息。"),
-                        HumanMessage(content=extract_prompt),
-                    ])
-                    ec = extract_resp.content if hasattr(extract_resp, "content") else str(extract_resp)
-                    ec = ec.strip()
-                    if ec.startswith("```"): ec = ec.split("\n", 1)[-1]; ec = ec.rsplit("```", 1)[0]
-                    try:
-                        guide_info = json.loads(ec)
-                    except json.JSONDecodeError:
-                        logger.warning("Failed to parse guide extraction JSON")
-                    logger.info("Guide extracted: %d spots, %d groups, %d tips",
-                                len(guide_info.get("spots", [])),
-                                len(guide_info.get("daily_groups", {})),
-                                len(guide_info.get("tips", [])))
-            except Exception as exc:
-                logger.warning("Guide search failed, falling back to pure Amap: %s", exc.__class__.__name__)
-                # Non-critical — continue with Amap-only pipeline
-
     # ── Step 1: Search strategy — use hardcoded categories (LLM skipped for speed) ──
     writer({"type": "searching", "data": {"message": f"正在搜索{city}的景点..."}})
 
