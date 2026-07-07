@@ -24,6 +24,17 @@ const activePanel = ref<'trips' | null>(null)
 const pois = computed(() => mapStore.pois)
 const routes = computed(() => mapStore.routes)
 const hasRoutes = computed(() => routes.value.length > 0)
+
+/** Collect all POI ids that appear in daily route plans. */
+const routePoiIds = computed(() => {
+  const ids = new Set<string>()
+  for (const r of routes.value) {
+    for (const p of (r.pois ?? [])) {
+      if (p.id) ids.add(String(p.id))
+    }
+  }
+  return ids
+})
 const selectedPOI = computed(() => mapStore.selectedPOI)
 const amapMap = shallowRef<AMap.Map | null>(null)
 const amapSDK = shallowRef<typeof AMap | null>(null)
@@ -214,7 +225,7 @@ onMounted(async () => {
     fitBoundsFromRoutes(AMap_sdk, routes.value as DailyPlan[])
   }
   if (pois.value.length > 0 && routes.value.length === 0) {
-    renderer.setPois(pois.value)
+    renderer.setPois(pois.value, routePoiIds.value)
     fitBoundsFromPOIs(AMap_sdk, pois.value)
   }
 })
@@ -232,8 +243,8 @@ onUnmounted(() => {
 
 // ── Watch: routes change → re-render ────────────────────────────────────────
 watch(
-  () => routes.value,
-  (newRoutes) => {
+  () => [routes.value, mapStore.routeVersion] as const,
+  ([newRoutes]) => {
     const map = amapMap.value
     const renderer = routeRenderer.value
     const AMap = amapSDK.value
@@ -260,8 +271,8 @@ watch(
     const AMap = amapSDK.value
     const renderer = routeRenderer.value
     if (!map || !AMap) return
-    if (newPois.length > 0 && routes.value.length === 0) {
-      renderer?.setPois(newPois)
+    if (newPois.length > 0) {
+      renderer?.setPois(newPois, routePoiIds.value)
       fitBoundsFromPOIs(AMap, newPois)
     }
   },
@@ -377,7 +388,7 @@ function onPOIsClick(): void {
         <span v-if="tripStore.tripCount > 0" class="map-navbar__badge numeric">{{ tripStore.tripCount }}</span>
       </button>
       <button
-        v-if="pois.length > 0 && !hasRoutes"
+        v-if="pois.length > 0"
         class="map-navbar__btn"
         :class="{ 'is-active': mapStore.poiPanelOpen }"
         title="兴趣点"
@@ -398,7 +409,7 @@ function onPOIsClick(): void {
     </div>
 
     <!-- 兴趣点 panel -->
-    <div v-if="mapStore.poiPanelOpen && pois.length > 0 && !hasRoutes" class="map-panel">
+    <div v-if="mapStore.poiPanelOpen && pois.length > 0" class="map-panel">
       <PoiSelectPanel @close="mapStore.setPoiPanelOpen(false)" />
     </div>
 

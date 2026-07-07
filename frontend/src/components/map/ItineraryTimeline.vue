@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useMapStore, type DailyPlan, type RoutePOI } from "@/stores/map";
 import { DAY_COLORS } from "@/utils/constants";
 import {
@@ -23,8 +23,16 @@ const MODE_OPTIONS: readonly TransportMode[] = ['walking', 'driving', 'transit']
 function getSegmentMode(day: number, idx: number): TransportMode {
   return mapStore.getSegmentMode(day, idx);
 }
-function onSegmentModeChange(day: number, idx: number, m: TransportMode): void {
-  mapStore.setSegmentMode(day, idx, m);
+const segmentLoading = ref<Record<string, boolean>>({});
+
+async function onSegmentModeChange(day: number, idx: number, m: TransportMode): Promise<void> {
+  const key = `${day}-${idx}`;
+  segmentLoading.value = { ...segmentLoading.value, [key]: true };
+  try {
+    await mapStore.setSegmentMode(day, idx, m);
+  } finally {
+    segmentLoading.value = { ...segmentLoading.value, [key]: false };
+  }
 }
 
 // ── Derived data ─────────────────────────────────────────────────────────────
@@ -90,8 +98,75 @@ const TIME_SLOT_LABELS: Record<string, string> = {
     evening: "晚间",
 };
 
+/** Category → icon mapping. Rendered as a small chip before the category label. */
+const CATEGORY_ICONS: Record<string, string> = {
+    "风景名胜": "🏔",
+    "国家级景点": "🏔",
+    "世界遗产": "🏛",
+    "博物馆": "🏛",
+    "展览馆": "🏛",
+    "美术馆": "🎨",
+    "科技馆": "🔬",
+    "寺庙道观": "🛕",
+    "教堂": "⛪",
+    "纪念馆": "🏛",
+    "公园": "🌿",
+    "城市广场": "⛲",
+    "动物园": "🦁",
+    "植物园": "🌺",
+    "水族馆": "🐠",
+    "游乐园": "🎢",
+    "主题公园": "🎢",
+    "国家级森林公园": "🌲",
+    "海滩": "🏖",
+    "岛屿": "🏝",
+    "温泉": "♨",
+    "文化街区": "🏘",
+    "历史遗址": "🏚",
+    "古村镇": "🏡",
+    "特色街区": "🏘",
+    "创意园区": "🎨",
+    "购物中心": "🛍",
+    "商业步行街": "🛍",
+    "夜市": "🏮",
+    "美食街": "🍜",
+    "特色餐厅": "🍜",
+    "电影院": "🎬",
+    "剧院": "🎭",
+    "音乐厅": "🎵",
+    "夜游": "🌃",
+    "游船": "⛵",
+    "观景台": "🔭",
+    "缆车": "🚡",
+    "运动场馆": "⚽",
+    "滑雪场": "⛷",
+    "高尔夫球场": "⛳",
+    "登山": "🥾",
+    "徒步路线": "🥾",
+    "会展中心": "🏢",
+    "用餐": "🍴",
+    "自然风光": "🌄",
+    "休闲娱乐": "🎯",
+    "特色村落": "🏡",
+    "宗教场所": "🛕",
+    "历史文化街区": "🏘",
+};
+
+function categoryIcon(cat: string | undefined): string {
+    if (!cat) return "";
+    if (CATEGORY_ICONS[cat]) return CATEGORY_ICONS[cat];
+    // Try substring match
+    for (const [key, icon] of Object.entries(CATEGORY_ICONS)) {
+        if (cat.includes(key)) return icon;
+    }
+    return "📍";
+}
+
 function formatTimeSlot(slot: string | undefined): string {
     if (!slot) return "";
+    // New format: "09:00 - 10:30" — display as-is
+    if (slot.includes(" - ")) return slot;
+    // Legacy format: "morning", "noon", etc.
     return TIME_SLOT_LABELS[slot] || slot;
 }
 </script>
@@ -244,7 +319,13 @@ function formatTimeSlot(slot: string | undefined): string {
                             </div>
                             <div class="itin__stop-meta">
                                 <span
-                                    v-if="poi.visit_duration_min"
+                                    v-if="poi.meal_type"
+                                    class="itin__chip itin__chip--meal"
+                                >
+                                    {{ poi.meal_type === 'lunch' ? '🍴 午餐' : '🍴 晚餐' }}
+                                </span>
+                                <span
+                                    v-if="poi.visit_duration_min && !poi.meal_type"
                                     class="itin__chip itin__chip--duration"
                                 >
                                     {{ formatDuration(poi.visit_duration_min) }}
@@ -255,9 +336,9 @@ function formatTimeSlot(slot: string | undefined): string {
                                 >
                                     {{ formatTimeSlot(poi.time_slot) }}
                                 </span>
-                                <span v-if="poi.category" class="itin__chip">{{
-                                    poi.category
-                                }}</span>
+                                <span v-if="poi.category" class="itin__chip itin__chip--category">
+                                    {{ categoryIcon(poi.category) }} {{ poi.category }}
+                                </span>
                                 <span
                                     v-if="poi.rating != null"
                                     class="itin__chip itin__chip--rating"
@@ -717,6 +798,20 @@ function formatTimeSlot(slot: string | undefined): string {
     color: var(--color-sage);
     background: rgba(126, 148, 112, 0.08);
     border-color: rgba(126, 148, 112, 0.25);
+}
+
+.itin__chip--meal {
+    color: #c6903a;
+    background: rgba(198, 144, 58, 0.1);
+    border-color: rgba(198, 144, 58, 0.25);
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.itin__chip--category {
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: var(--text-xs);
 }
 
 /* ── Inline segregated mode switcher (replaces single .itin__chip--mode) ── */

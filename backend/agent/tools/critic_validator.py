@@ -24,7 +24,7 @@ CRITIC_PROMPT = """你是一个严格的旅游行程审核专家。审查以下{
 
 审核维度：
 1. **地理连贯性**：同天的POI是否在合理的区域内？跨区穿梭是否严重？
-2. **时间分配**：每个POI的游玩时长(visit_duration_min)是否合理？总时间+交通时间是否超出日预算(660分钟=11小时)？
+2. **时间分配**：每个POI的游玩时长(visit_duration_min)是否合理？总时间+交通时间是否超出日预算(810分钟=13.5小时, 8:30-22:00)？
 3. **节奏合理**：是否有某天太赶(>7个长时长POI)或太闲(只有1-2个短时长POI)？
 4. **开放时间**：如果有opentime信息，POI的游玩是否在开放时间内？特别是博物馆（周一闭馆）？
 5. **评分质量**：是否有评分低于3.5的POI可以替换？
@@ -157,8 +157,9 @@ def _apply_suggestions(
                 if dp.get("day") == target_day:
                     old_pois = dp.get("pois", [])
                     dp["pois"] = [p for p in old_pois if p.get("name") != target_poi]
-                    logger.info("Critic applied: removed '%s' from day %d — %s",
-                                target_poi, target_day, description)
+                    removed_count = len(old_pois) - len(dp["pois"])
+                    logger.info("Critic applied: removed '%s' from day %d (%d→%d POIs) — %s",
+                                target_poi, target_day, len(old_pois), len(dp["pois"]), description)
                     break
 
         elif action == "reorder" and target_day is not None:
@@ -211,6 +212,18 @@ def _apply_suggestions(
     return updated
 
 
+def _prune_empty_days(daily_plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove days with zero POIs and renumber remaining days sequentially."""
+    non_empty = [dp for dp in daily_plans if len(dp.get("pois", [])) > 0]
+    if len(non_empty) == len(daily_plans):
+        return daily_plans
+    for i, dp in enumerate(non_empty, start=1):
+        dp["day"] = i
+    logger.info("Critic: pruned %d empty day(s), %d remain",
+                len(daily_plans) - len(non_empty), len(non_empty))
+    return non_empty
+
+
 async def run_critic_loop(
     daily_plans: list[dict[str, Any]],
     city: str = "",
@@ -251,5 +264,8 @@ async def run_critic_loop(
             verdict.get("suggestions", []),
             all_pois or [],
         )
+
+        # Prune any days that became empty after removals
+        daily_plans = _prune_empty_days(daily_plans)
 
     return daily_plans

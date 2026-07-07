@@ -20,7 +20,7 @@ from app.services.duration_estimator import estimate_poi_duration_from_dict, est
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-_MAX_DAILY_BUDGET_MIN = 840  # 14 hours — hard upper bound
+_MAX_DAILY_BUDGET_MIN = 960  # 16 hours — hard upper bound (8:30–late evening)
 _TRANSIT_RATIO_WARN = 1.5     # warn when transit > 1.5× visit time
 
 # Business rules — hard coded, not LLM-dependent
@@ -186,7 +186,7 @@ async def submit_plan(
     校验规则：
     - POI 不重复（同一 POI 只能出现一次）
     - 每天至少 1 个 POI
-    - 每天总时长不超过 840 分钟（14 小时）
+    - 每天总时长不超过 960 分钟（16 小时）
     - 交通时间占比合理（软性提醒）
 
     校验通过后，行程会被推送到地图上展示。
@@ -194,26 +194,40 @@ async def submit_plan(
     Args:
         city: 城市名称，如 "北京"
         days: 旅行天数
-        daily_plans: 每日计划列表，每项格式（每个 POI 必须包含 poi_id/name/lng/lat/visit_duration_min）：
+        daily_plans: 每日计划列表，每项格式（只需填 poi_id/name/lng/lat，visit_duration_min 和时间段由系统自动计算）：
             {
               "day": 1,
               "day_theme": "皇城中轴线漫游",
               "pois": [
-                {"poi_id": "B001...", "name": "故宫", "lng": 116.397, "lat": 39.916, "visit_duration_min": 120},
-                {"poi_id": "B002...", "name": "全聚德", "lng": 116.402, "lat": 39.913, "visit_duration_min": 60}
-              ],
-              "total_duration_min": 280,
-              "total_transit_min": 35
+                {"poi_id": "B001...", "name": "故宫", "lng": 116.397, "lat": 39.916},
+                {"poi_id": "B002...", "name": "全聚德", "lng": 116.402, "lat": 39.913}
+              ]
             }
     """
-    # ── Auto-route each day if not already routed ────────────────────────
+    # ── Ensure visit_duration_min is computed for every POI ──
+    for dp in daily_plans:
+        for p in dp.get("pois", []):
+            if not p.get("visit_duration_min"):
+                p["visit_duration_min"] = estimate_poi_duration_from_dict(p)
+
+    # ── Auto-route days that weren't routed by the pipeline ──────────────────
+    # The planning pipeline already calls route_one_day() before invoking
+    # submit_plan.  We only need to route here when submit_plan is called
+    # directly (e.g. by the LLM during a ReAct loop).  Days that already
+    # carry a polyline or segments list are skipped.
     _sorted = sorted(daily_plans, key=lambda d: d.get("day", 0))
-    _tasks = [
-        route_one_day(dp) if not (dp.get("segments") or dp.get("polyline"))
-        else asyncio.sleep(0, result=dp)
-        for dp in _sorted
-    ]
-    enriched_plans = await asyncio.gather(*_tasks)
+    all_routed = all(
+        (dp.get("segments") or dp.get("polyline")) for dp in _sorted
+    )
+    if all_routed:
+        enriched_plans = _sorted
+    else:
+        _tasks = [
+            route_one_day(dp) if not (dp.get("segments") or dp.get("polyline"))
+            else asyncio.sleep(0, result=dp)
+            for dp in _sorted
+        ]
+        enriched_plans = await asyncio.gather(*_tasks)
 
     plan = {"city": city, "days": days, "daily_plans": enriched_plans}
     issues = _validate_plan(plan)
@@ -404,7 +418,101 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
             _fallback_segments(ordered, result)
     else:
         result["pois"] = list(pois)
+
+    _assign_time_slots(result)
     return result
+
+
+def _assign_time_slots(dp: dict[str, Any]) -> None:
+    """Assign time_slot strings (e.g. '9:00 - 10:30') to each POI in a day.
+
+    Start of day is 8:30. Each POI gets visit_duration_min, then we add the
+    transit time from the corresponding segment before the next POI starts.
+    POIs without visit_duration_min get a 60-min default.
+
+    For days with >= 4 POIs, a 60-min lunch break is inserted around 12:00
+    and a 60-min dinner break around 18:00.  These appear as inline markers
+    (meal_type="lunch"/"dinner") in the POI list so the frontend can render
+    a distinct chip.
+    """
+    HOUR = 60
+    START_H = 8
+    START_M = 30
+    MEAL_MIN = 60
+    LUNCH_TARGET = 12 * HOUR      # 12:00
+    DINNER_TARGET = 18 * HOUR      # 18:00
+
+    total_min = START_H * HOUR + START_M  # 510 = 08:30
+
+    pois = dp.get("pois", [])
+    segments = dp.get("segments", [])
+    if not pois:
+        return
+
+    # Map original POIs to a mutable list (we'll splice meal breaks in)
+    out: list[dict[str, Any]] = []
+    lunch_done = False
+    dinner_done = False
+
+    for i, poi in enumerate(pois):
+        dur = poi.get("visit_duration_min")
+        if not isinstance(dur, (int, float)) or dur <= 0:
+            dur = 60
+        else:
+            dur = int(dur)
+
+        start_h = total_min // HOUR
+        start_m = total_min % HOUR
+        total_min += dur
+        end_h = total_min // HOUR
+        end_m = total_min % HOUR
+
+        poi["time_slot"] = f"{start_h:02d}:{start_m:02d} - {end_h:02d}:{end_m:02d}"
+        out.append(poi)
+
+        # Transit to next POI (before checking meal break)
+        transit = 0
+        if i < len(pois) - 1 and i < len(segments):
+            transit = int(segments[i].get("duration_min", 0) or 0)
+
+        # Only insert meal breaks when there are enough POIs
+        if len(pois) < 4:
+            total_min += transit
+            continue
+
+        # Lunch: insert after the POI whose end time first crosses 12:00
+        if not lunch_done and end_h * HOUR + end_m >= LUNCH_TARGET:
+            lunch_done = True
+            lunch_start = total_min
+            total_min += MEAL_MIN
+            out.append({
+                "name": "午餐",
+                "category": "用餐",
+                "meal_type": "lunch",
+                "lng": poi.get("lng"),
+                "lat": poi.get("lat"),
+                "time_slot": f"{lunch_start // HOUR:02d}:{lunch_start % HOUR:02d} - {total_min // HOUR:02d}:{total_min % HOUR:02d}",
+                "visit_duration_min": MEAL_MIN,
+            })
+
+        # Dinner: insert after the POI whose end time first crosses 18:00
+        if not dinner_done and end_h * HOUR + end_m >= DINNER_TARGET:
+            dinner_done = True
+            dinner_start = total_min
+            total_min += MEAL_MIN
+            out.append({
+                "name": "晚餐",
+                "category": "用餐",
+                "meal_type": "dinner",
+                "lng": poi.get("lng"),
+                "lat": poi.get("lat"),
+                "time_slot": f"{dinner_start // HOUR:02d}:{dinner_start % HOUR:02d} - {total_min // HOUR:02d}:{total_min % HOUR:02d}",
+                "visit_duration_min": MEAL_MIN,
+            })
+
+        total_min += transit
+
+    dp["pois"] = out
 
 
 def _fallback_leg(segments: list[dict[str, Any]], straight_km: float) -> None:

@@ -9,6 +9,9 @@ from app.services.duration_estimator import (
     IMPORTANCE_MULTIPLIER,
 )
 
+# New defaults as of 2026-07: max_day_min=810, avg_commute=15, meal_break=75
+# Base durations lowered (e.g. 风景名胜 180→120, default 90→60)
+
 
 class TestEstimateVisitDuration:
     """Unit tests for estimate_visit_duration."""
@@ -23,11 +26,11 @@ class TestEstimateVisitDuration:
 
     def test_fallback_to_default(self):
         d = estimate_visit_duration(category="未知分类XYZ")
-        assert d == 90
+        assert d == 60  # new default
 
     def test_none_category_uses_default(self):
         d = estimate_visit_duration(category=None)
-        assert d == 90
+        assert d == 60  # new default
 
     def test_importance_5a_boosts(self):
         base = estimate_visit_duration(category="博物馆")  # 120
@@ -35,16 +38,19 @@ class TestEstimateVisitDuration:
         assert boosted == int(120 * 1.3)  # 156
 
     def test_importance_4a_boosts(self):
+        # 公园 base is now 60 (was 90)
         d = estimate_visit_duration(category="公园", importance="4A")
-        assert d == int(90 * 1.15)
+        assert d == int(60 * 1.15)  # 69
 
     def test_importance_3a_no_change(self):
+        # 寺庙道观 base is now 60 (was 90)
         d = estimate_visit_duration(category="寺庙道观", importance="3A")
-        assert d == 90
+        assert d == 60
 
     def test_importance_2a_reduces(self):
+        # 风景名胜 base is now 120 (was 180)
         d = estimate_visit_duration(category="风景名胜", importance="2A")
-        assert d == int(180 * 0.85)
+        assert d == int(120 * 0.85)  # 102
 
     def test_high_rating_boost(self):
         base = estimate_visit_duration(category="博物馆", rating=4.5)
@@ -75,15 +81,15 @@ class TestEstimateVisitDuration:
         assert d == 15
 
     def test_clamps_maximum(self):
-        # 游乐园=240, 5A=1.3, rating=4.5=1.1, review=2000=1.1 → ~377 → clamped to 360
+        # 游乐园=180, 5A=1.3, rating=4.5=1.1, review=2000=1.1 → ~283 → under 360
         d = estimate_visit_duration(
             category="游乐园", importance="5A", rating=4.8, review_count=5000
         )
-        assert d == 360
+        assert d == int(180 * 1.3 * 1.1 * 1.1)  # ~283
 
     def test_empty_string_category(self):
         d = estimate_visit_duration(category="")
-        assert d == 90
+        assert d == 60  # new default
 
     def test_importance_case_insensitive(self):
         d1 = estimate_visit_duration(category="博物馆", importance="5a")
@@ -92,16 +98,19 @@ class TestEstimateVisitDuration:
 
 
 class TestEstimateDailyCapacity:
-    """Unit tests for estimate_daily_capacity."""
+    """Unit tests for estimate_daily_capacity.
+
+    New defaults: max_day_min=810, avg_commute=15, meal_break=75.
+    Available = 810 - 75 = 735 minutes.
+    """
 
     def test_four_short_pois_fit(self):
-        # 4×60 = 240 visit, + 3×20 commute = 300, fits in 600 (660-60 meal)
+        # 4×60 = 240 visit, + 3×15 commute = 285, total 525 < 735
         cap = estimate_daily_capacity([60, 60, 60, 60])
         assert cap == 4
 
     def test_long_pois_limit_count(self):
-        # 3×240=720 visit, first: 240 fits, second: 240+20=260 total 500 fits,
-        # third: 240+20=260 total 760 > 600 → stops → 2
+        # 240, then +240+15=255, then +240+15=255 → total 240+255+255=750 > 735 → 2
         cap = estimate_daily_capacity([240, 240, 240])
         assert cap == 2
 
@@ -111,21 +120,19 @@ class TestEstimateDailyCapacity:
         assert cap == 2
 
     def test_mixed_durations(self):
-        # 180 + (120+20) + (90+20) + (60+20) = 180+140+110+80 = 510 fits
-        # Next: (45+20) = 65 → 575 fits
-        # Next: (30+20) = 50 → 625 > 600 → stop at 5
+        # 180 + (120+15) + (90+15) + (60+15) + (45+15) + (30+15)
+        # = 180 + 135 + 105 + 75 + 60 + 45 = 600 < 735 → all 6 fit
         cap = estimate_daily_capacity([180, 120, 90, 60, 45, 30])
-        assert cap == 5
+        assert cap == 6
 
     def test_empty_list_returns_two(self):
         cap = estimate_daily_capacity([])
         assert cap == 2
 
     def test_custom_commute(self):
-        # 120 + (120+30) + (120+30) = 420 fits,
-        # + (120+30) = 570 fits, + (120+30) = 720 > 600 → 4
+        # 120 + (120+30)×4 = 120 + 150×4 = 720 < 735 → all 5 fit
         cap = estimate_daily_capacity([120, 120, 120, 120, 120], avg_commute_min=30)
-        assert cap == 4
+        assert cap == 5
 
 
 class TestEstimatePoiDurationFromDict:
@@ -137,18 +144,18 @@ class TestEstimatePoiDurationFromDict:
         assert d == int(120 * 1.1)  # only rating boost
 
     def test_amap_poi_with_type_field(self):
-        # Amap uses "type" instead of "category"
+        # 风景名胜 base is now 120 (was 180)
         poi = {"type": "风景名胜;国家级景点", "importance": "5A"}
         d = estimate_poi_duration_from_dict(poi)
-        assert d == int(180 * 1.3)
+        assert d == int(120 * 1.3)  # 156
 
     def test_poi_with_all_fields_missing(self):
         poi = {}
         d = estimate_poi_duration_from_dict(poi)
-        assert d == 90  # default
+        assert d == 60  # new default
 
     def test_poi_with_opentime_cost_tags(self):
-        # Extra fields should not break the estimator
+        # 公园 base is now 60 (was 90)
         poi = {
             "category": "公园",
             "rating": 4.2,
@@ -159,7 +166,7 @@ class TestEstimatePoiDurationFromDict:
             "business_area": "朝阳区",
         }
         d = estimate_poi_duration_from_dict(poi)
-        assert d == int(90 * 1.15)
+        assert d == int(60 * 1.15)  # 69
 
 
 class TestCategoryDurationMap:

@@ -8,6 +8,7 @@ import {
   estimateDuration as estimateDurationByMode,
   type TransportMode,
 } from "@/utils/format";
+import { fetchSegmentRoute } from "@/utils/amapRouteService";
 
 export interface PlanSummary {
   city: string;
@@ -324,21 +325,58 @@ export const useMapStore = defineStore("map", () => {
 
   /**
    * Persist a user-selected transport mode for a single segment and
-   * recompute its `duration_min` from the mode's average speed.
-   * Mutates the reactive `routes` array in place so Vue components and
-   * the map renderer pick up the change without an extra watcher.
+   * fetch the **real road path** from Amap for the new mode.
+   *
+   * When the API returns a fresh polyline / distance / duration we
+   * update the segment in-place; on failure the mode and an estimated
+   * duration are still saved, so the UI always reflects the user's choice.
    */
-  function setSegmentMode(
+  async function setSegmentMode(
     day: number,
     segIndex: number,
     mode: TransportMode,
-  ): void {
+  ): Promise<void> {
     const plan = routes.value.find((r) => r.day === day);
     const seg = plan?.segments?.[segIndex];
     if (!plan || !seg) return;
+
     const km = seg.distance_km ?? 0;
+    // Optimistic: apply mode + estimated duration immediately so the UI
+    // responds at once. Clear any stale per-segment polyline so the
+    // renderer falls back to the day-polyline slice rather than showing
+    // the OLD mode's road geometry with the NEW mode's dash style.
     seg.mode = mode;
     seg.duration_min = estimateDurationByMode(km, mode);
+    seg.polyline = undefined;
+    _triggerRouteRefresh();
+
+    // Determine the two POIs this segment connects
+    const pois = plan.pois ?? [];
+    const from = pois[segIndex];
+    const to = pois[segIndex + 1];
+    if (
+      !from || !to ||
+      typeof from.lng !== 'number' || typeof from.lat !== 'number' ||
+      typeof to.lng !== 'number' || typeof to.lat !== 'number'
+    ) return;
+
+    const requestId = ++_segRequestSeq;
+    const result = await fetchSegmentRoute(
+      [from.lng, from.lat],
+      [to.lng, to.lat],
+      mode,
+    );
+
+    // Race guard: a newer request started after this one — discard stale result.
+    if (requestId !== _segRequestSeq) return;
+
+    if (result) {
+      seg.polyline = result.polyline;       // real road path
+      seg.distance_km = result.distance;
+      seg.duration_min = result.duration;
+      seg.mode = result.mode;
+      _triggerRouteRefresh();
+    }
   }
 
   /**
@@ -357,10 +395,28 @@ export const useMapStore = defineStore("map", () => {
     basemapLayer.value = layer;
   }
 
+  // ── Route refresh trigger for ReactiveLayerRenderer ─────────────────────────
+  // Vue's watch on `routes.value` uses shallow comparison (===). Mutations
+  // inside DailyPlan.segments[] don't change the array reference, so the
+  // watcher never fires and the map never redraws after setSegmentMode.
+  // _routeVersion acts as a manual invalidation signal — bumping it forces
+  // a re-render without deep-watching the entire routes tree.
+  const routeVersion = ref(0);
+
+  // Race guard: setSegmentMode is async — the user can click another mode
+  // button before the previous Amap API call resolves.  _segRequestSeq
+  // lets us discard late responses so the UI never shows stale data.
+  let _segRequestSeq = 0;
+
+  function _triggerRouteRefresh(): void {
+    routeVersion.value++;
+  }
+
   return {
     // state
     pois,
     routes,
+    routeVersion,
     selectedPOI,
     selectedPoiIds,
     poiPanelOpen,

@@ -150,12 +150,16 @@ export class RouteLayerRenderer {
   /**
    * Show search-result POIs on the map immediately (before route planning).
    * @param {import('@/types').POI[]} pois
+   * @param {Set<string>} [routePoiIds] — IDs of POIs that are already shown as route stops
    */
-  setPois(pois) {
+  setPois(pois, routePoiIds) {
     this._clearPoiMarkers()
     if (!this._map || !this._AMap) return
     const clickFn = this._onPoiClick
+    const skipIds = routePoiIds || new Set()
     for (const poi of pois) {
+      // Skip POIs that are already displayed as route stop markers
+      if (skipIds.has(String(poi.id))) continue
       const content = `<div class="poi-dot" data-poi-id="${poi.id}" style="
         width:22px;height:22px;
         background:#e8623c;border-radius:50%;
@@ -229,16 +233,16 @@ export class RouteLayerRenderer {
 
   _render() {
     if (!this._AMap) return
-    // Auto-detect map from AMap global
     if (!this._map) {
-      // Walk Amap instances — there should be one active map
       const maps = document.querySelectorAll('.amap-container')
-      // The map instance is stored on the container element by amap
       this._map = this._findMapInstance()
     }
     if (!this._map) return
 
     this._clear()
+    // Keep standalone POI markers visible when routes are rendered
+    // _clearPoiMarkers() is NOT called here — only in setPois() which
+    // replaces the full set atomically.
 
     const visibleDays = this._activeDay === 0
       ? new Set(this._plans.map((p) => p.day))

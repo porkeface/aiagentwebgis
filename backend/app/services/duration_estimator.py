@@ -14,44 +14,44 @@ from __future__ import annotations
 
 CATEGORY_DURATION_MAP: dict[str, int] = {
     # Large scenic areas — half-day visits
-    "风景名胜": 180,
-    "国家级景点": 180,
-    "世界遗产": 180,
+    "风景名胜": 120,
+    "国家级景点": 120,
+    "世界遗产": 120,
     "纪念馆": 60,
-    "寺庙道观": 90,
+    "寺庙道观": 60,
     "教堂": 45,
     "博物馆": 120,
     "展览馆": 90,
     "美术馆": 90,
     "科技馆": 120,
-    "会展中心": 90,
+    "会展中心": 60,
 
     # Parks & nature
-    "公园": 90,
+    "公园": 60,
     "城市广场": 30,
-    "动物园": 150,
-    "植物园": 120,
+    "动物园": 120,
+    "植物园": 90,
     "水族馆": 90,
-    "游乐园": 240,
-    "主题公园": 240,
-    "国家级森林公园": 240,
-    "海滩": 120,
-    "岛屿": 240,
-    "温泉": 120,
+    "游乐园": 180,
+    "主题公园": 180,
+    "国家级森林公园": 180,
+    "海滩": 90,
+    "岛屿": 180,
+    "温泉": 90,
 
     # Cultural & historic
-    "文化街区": 150,
-    "历史遗址": 90,
-    "古村镇": 180,
+    "文化街区": 120,
+    "历史遗址": 60,
+    "古村镇": 150,
     "特色街区": 90,
     "创意园区": 60,
 
     # Shopping & food
-    "购物中心": 90,
-    "商业步行街": 120,
+    "购物中心": 60,
+    "商业步行街": 90,
     "夜市": 60,
-    "美食街": 90,
-    "特色餐厅": 60,
+    "美食街": 60,
+    "特色餐厅": 45,
 
     # Entertainment & nightlife
     "电影院": 120,
@@ -59,15 +59,15 @@ CATEGORY_DURATION_MAP: dict[str, int] = {
     "音乐厅": 120,
     "夜游": 60,
     "游船": 60,
-    "观景台": 45,
+    "观景台": 30,
     "缆车": 30,
 
     # Sports & outdoor
-    "运动场馆": 90,
-    "滑雪场": 240,
-    "高尔夫球场": 180,
-    "登山": 240,
-    "徒步路线": 240,
+    "运动场馆": 60,
+    "滑雪场": 180,
+    "高尔夫球场": 120,
+    "登山": 180,
+    "徒步路线": 180,
 
     # Transportation hubs (not usually POIs but may appear)
     "机场": 30,
@@ -76,7 +76,7 @@ CATEGORY_DURATION_MAP: dict[str, int] = {
     "港口码头": 15,
 
     # Fallback for unknown categories
-    "default": 90,
+    "default": 60,
 }
 
 # ---------------------------------------------------------------------------
@@ -146,9 +146,9 @@ def estimate_visit_duration(
 
 def estimate_daily_capacity(
     poi_durations: list[int],
-    avg_commute_min: int = 20,
-    meal_break_min: int = 60,
-    max_day_min: int = 660,  # 11h active time (8am–7pm)
+    avg_commute_min: int = 15,
+    meal_break_min: int = 75,
+    max_day_min: int = 810,  # 13.5h active time (8:30–22:00)
 ) -> int:
     """Calculate how many POIs can fit in a day given their durations + overhead.
 
