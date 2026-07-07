@@ -42,9 +42,9 @@ function getDayColor(day) {
 
 function _buildMarker(icon, color, extraStyle = "") {
   return `<div class="poi-marker" style="
-    width:18px;height:18px;
+    width:27px;height:27px;
     background:${color};
-    border:1.5px solid #fff;
+    border:2px solid #fff;
     border-radius:50%;
     display:flex;align-items:center;justify-content:center;
     box-shadow:0 1px 3px rgba(0,0,0,0.4);
@@ -187,7 +187,7 @@ export class RouteLayerRenderer {
       const marker = new this._AMap.Marker({
         position: [poi.lng, poi.lat],
         content,
-        offset: new this._AMap.Pixel(-9, -9),
+        offset: new this._AMap.Pixel(-14, -14),
         zIndex: 200,
       })
       if (clickFn) {
