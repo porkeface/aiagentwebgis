@@ -260,6 +260,22 @@ watch(
   () => mapStore.activeDay,
   (day) => {
     routeRenderer.value?.setActiveDay(day)
+    // When switching to a specific day, move the map to show that day's route
+    if (day > 0) {
+      const plan = routes.value.find((r) => r.day === day)
+      if (plan && plan.pois.length >= 2 && amapSDK.value) {
+        const lngs = plan.pois.map((p) => p.lng)
+        const lats = plan.pois.map((p) => p.lat)
+        amapMap.value?.setBounds(
+          new amapSDK.value.Bounds(
+            [Math.min(...lngs), Math.min(...lats)],
+            [Math.max(...lngs), Math.max(...lats)],
+          ),
+          false,
+          [80, 80, 80, 80],
+        )
+      }
+    }
   },
 )
 
