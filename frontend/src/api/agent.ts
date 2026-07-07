@@ -178,6 +178,7 @@ function parseSSEEvent(raw: string): SSEEvent | null {
     "text",
     "error",
     "progress",
+    "done",
     // Pipeline events (previously dropped — see B-4 audit fix)
     "intent_detected",
     "searching",

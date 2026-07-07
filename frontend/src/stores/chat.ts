@@ -209,6 +209,13 @@ export const useChatStore = defineStore("chat", () => {
           break;
         }
 
+        case "done": {
+          // SSE stream finished — clear all status indicators
+          toolStatus.value = null;
+          progress.value = null;
+          break;
+        }
+
         case "error": {
           const errData = event.data as Record<string, unknown> | undefined;
           const errMsg = errData && typeof errData === "object" && "message" in errData

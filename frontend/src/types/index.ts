@@ -113,7 +113,8 @@ export type SSEEventType =
   | "day_routing"
   | "critic_review"
   | "critic_result"
-  | "intent_detected";
+  | "intent_detected"
+  | "done";
 
 export interface SSEEvent {
   type: SSEEventType;
