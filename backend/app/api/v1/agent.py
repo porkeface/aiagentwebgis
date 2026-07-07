@@ -569,14 +569,18 @@ async def _event_generator(
                             })
     
                     # ── Per-token text streaming ──
+                    # Skip streaming from classify_intent node — its raw JSON
+                    # output is not user-facing text and would pollute the chat.
                     elif kind == "on_chat_model_stream":
-                        chunk = data.get("chunk")
-                        if chunk and hasattr(chunk, "content") and chunk.content:
-                            accumulated_text += chunk.content
-                            yield _format_sse_event("message", {
-                                "type": "text",
-                                "data": {"content": chunk.content},
-                            })
+                        lg_node = event.get("metadata", {}).get("langgraph_node", "")
+                        if lg_node != "classify_intent":
+                            chunk = data.get("chunk")
+                            if chunk and hasattr(chunk, "content") and chunk.content:
+                                accumulated_text += chunk.content
+                                yield _format_sse_event("message", {
+                                    "type": "text",
+                                    "data": {"content": chunk.content},
+                                })
     
                     # ── Chain ends: pipeline emits route_result via return dict ──
                     elif kind == "on_chain_end" and name == "planning_pipeline":
