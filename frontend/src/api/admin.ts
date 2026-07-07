@@ -22,6 +22,7 @@ export interface AdminUser {
   nickname: string;
   email: string | null;
   is_admin: boolean;
+  created_at: string;
 }
 
 export interface AdminTrip {
@@ -40,6 +41,15 @@ export interface AdminSession {
   title: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface AdminPOI {
+  id: number;
+  name: string;
+  category: string;
+  city: string;
+  rating: number | null;
+  created_at: string;
 }
 
 export interface AdminStats {
@@ -128,6 +138,19 @@ export async function deleteAnyTrip(id: number): Promise<void> {
     method: "DELETE",
     headers: authHeaders(),
   });
+}
+
+// ── POIs ──────────────────────────────────────────────────────────────────
+
+export async function listAllPois(
+  page = 1,
+  size = 50,
+): Promise<{ total: number; items: AdminPOI[] }> {
+  const res = await request<{
+    success: boolean;
+    data: { total: number; items: AdminPOI[] };
+  }>(`/admin/pois?page=${page}&size=${size}`, { headers: authHeaders() });
+  return res.data;
 }
 
 // ── Sessions ───────────────────────────────────────────────────────────────

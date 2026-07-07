@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import * as adminApi from "@/api/admin";
-import type { ConfigData, ConfigUpdateResult, AdminUser, AdminTrip, AdminSession, AdminStats } from "@/api/admin";
+import type { ConfigData, ConfigUpdateResult, AdminUser, AdminTrip, AdminSession, AdminPOI, AdminStats } from "@/api/admin";
 
 export const useAdminStore = defineStore("admin", () => {
   const loading = ref(false);
@@ -9,6 +9,7 @@ export const useAdminStore = defineStore("admin", () => {
   const stats = ref<AdminStats | null>(null);
   const users = ref<AdminUser[]>([]);
   const trips = ref<AdminTrip[]>([]);
+  const pois = ref<AdminPOI[]>([]);
   const sessions = ref<AdminSession[]>([]);
 
   async function fetchConfig(): Promise<void> {
@@ -85,16 +86,27 @@ export const useAdminStore = defineStore("admin", () => {
     }
   }
 
+  async function fetchPois(page = 1): Promise<void> {
+    loading.value = true;
+    try {
+      const data = await adminApi.listAllPois(page, 50);
+      pois.value = data.items;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   async function removeSession(id: number): Promise<void> {
     await adminApi.deleteAnySession(id);
     sessions.value = sessions.value.filter((s) => s.id !== id);
   }
 
   return {
-    loading, config, stats, users, trips, sessions,
+    loading, config, stats, users, trips, pois, sessions,
     fetchConfig, saveConfig, fetchStats,
     fetchUsers, updateUser, removeUser,
     fetchTrips, removeTrip,
     fetchSessions, removeSession,
+    fetchPois,
   };
 });

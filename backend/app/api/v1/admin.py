@@ -88,6 +88,7 @@ async def list_users(
                     "nickname": u.nickname,
                     "email": u.email,
                     "is_admin": u.is_admin,
+                    "created_at": u.created_at.isoformat(),
                 }
                 for u in users
             ],
@@ -218,6 +219,42 @@ async def delete_any_trip(
     await db.delete(trip)
     await db.flush()
     return {"success": True, "data": {"deleted": trip.id}}
+
+
+@router.get("/pois", summary="List all POIs")
+async def list_all_pois(
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_session),
+    user_id: int = Depends(require_admin),
+) -> dict:
+    """List all POIs."""
+    count_res = await db.execute(select(func.count()).select_from(POI))
+    total = count_res.scalar() or 0
+
+    offset = (page - 1) * size
+    result = await db.execute(
+        select(POI).order_by(POI.created_at.desc()).offset(offset).limit(size)
+    )
+    pois = result.scalars().all()
+
+    return {
+        "success": True,
+        "data": {
+            "total": total,
+            "items": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "category": p.category,
+                    "city": p.city,
+                    "rating": p.rating,
+                    "created_at": p.created_at.isoformat(),
+                }
+                for p in pois
+            ],
+        },
+    }
 
 
 @router.get("/sessions", summary="List all chat sessions")
