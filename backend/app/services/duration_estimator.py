@@ -173,7 +173,7 @@ def estimate_daily_capacity(
         total += needed
         count += 1
 
-    return max(count, 2)  # at least 2 POIs per day
+    return max(count, 3)  # at least 3 POIs per day
 
 
 def estimate_poi_duration_from_dict(poi: dict) -> int:

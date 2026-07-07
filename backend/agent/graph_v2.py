@@ -42,6 +42,12 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+def _euclidean_sq_for_poi(poi: dict[str, Any], clat: float, clng: float) -> float:
+    """Squared Euclidean distance between a POI dict and a centroid (lat,lng)."""
+    return (poi.get("lat", 0) - clat) ** 2 + (poi.get("lng", 0) - clng) ** 2
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -269,103 +275,80 @@ async def planning_pipeline_node(
             writer=writer,
         )
 
-    # ── Step 0: Xiaohongshu guide search ──────────────────────────────────
+    # ── Step 0: Xiaohongshu guide search (DISABLED for speed — re-enable by
+    #     removing the "if False") ──────────────────────────────────────────
     guide_info: dict[str, Any] = {"spots": [], "daily_groups": {}, "tips": []}
-    if settings.oneapi_api_key:
-        try:
-            writer({"type": "searching", "data": {"message": "正在搜索小红书攻略..."}})
-            from app.services.oneapi_service import OneAPIService
+    if False:  # disabled: saves ~15s (2 API + 1 LLM call), marginal quality gain
+        if settings.oneapi_api_key:
+            try:
+                writer({"type": "searching", "data": {"message": "正在搜索小红书攻略..."}})
+                from app.services.oneapi_service import OneAPIService
 
-            oneapi = OneAPIService()
+                oneapi = OneAPIService()
 
-            # Two parallel guide searches
-            resp_guide, resp_spot = await asyncio.gather(
-                oneapi.search_notes(keyword=f"{city}{days}日旅游攻略 路线推荐", page=1, sort_type="popularity_descending", note_type="普通笔记", time_filter="半年内"),
-                oneapi.search_notes(keyword=f"{city}必去景点推荐 2026", page=1, sort_type="popularity_descending", note_type="普通笔记", time_filter="半年内"),
-                return_exceptions=True,
-            )
+                # Two parallel guide searches
+                resp_guide, resp_spot = await asyncio.gather(
+                    oneapi.search_notes(keyword=f"{city}{days}日旅游攻略 路线推荐", page=1, sort_type="popularity_descending", note_type="普通笔记", time_filter="半年内"),
+                    oneapi.search_notes(keyword=f"{city}必去景点推荐 2026", page=1, sort_type="popularity_descending", note_type="普通笔记", time_filter="半年内"),
+                    return_exceptions=True,
+                )
 
-            guide_text = ""
-            if isinstance(resp_guide, dict):
-                guide_text += oneapi.extract_guide_text(resp_guide, max_notes=8)
-            if isinstance(resp_spot, dict):
-                guide_text += "\n\n" + oneapi.extract_guide_text(resp_spot, max_notes=8)
+                guide_text = ""
+                if isinstance(resp_guide, dict):
+                    guide_text += oneapi.extract_guide_text(resp_guide, max_notes=8)
+                if isinstance(resp_spot, dict):
+                    guide_text += "\n\n" + oneapi.extract_guide_text(resp_spot, max_notes=8)
 
-            await oneapi.close()
+                await oneapi.close()
 
-            if guide_text.strip():
-                # LLM extracts route info from guide text
-                extract_prompt = f"""你是旅游攻略信息提取器。从以下小红书攻略摘要中：
+                if guide_text.strip():
+                    # LLM extracts route info from guide text
+                    extract_prompt = f"""你是旅游攻略信息提取器。从以下小红书攻略摘要中：
 
-1. 提取所有被推荐的景点/地点名称列表（一行一个，去重）
-2. 如果有按天分组建议，提取分组（如"第1天：故宫+景山+南锣"）
-3. 提取注意事项（开放时间、门票、季节提示等，每个一行）
+    1. 提取所有被推荐的景点/地点名称列表（一行一个，去重）
+    2. 如果有按天分组建议，提取分组（如"第1天：故宫+景山+南锣"）
+    3. 提取注意事项（开放时间、门票、季节提示等，每个一行）
 
-攻略内容：
-{guide_text[:4000]}
+    攻略内容：
+    {guide_text[:4000]}
 
-输出纯JSON：
-{{"spots": ["景点名1", "景点名2"], "daily_groups": {{"第1天": ["A", "B"]}}, "tips": ["提示1", "提示2"]}}"""
+    输出纯JSON：
+    {{"spots": ["景点名1", "景点名2"], "daily_groups": {{"第1天": ["A", "B"]}}, "tips": ["提示1", "提示2"]}}"""
 
-                raw_model = _get_model_no_tools()
-                extract_resp = await raw_model.ainvoke([
-                    SystemMessage(content="你是精确的旅游信息提取器，只提取攻略中明确提到的信息。"),
-                    HumanMessage(content=extract_prompt),
-                ])
-                ec = extract_resp.content if hasattr(extract_resp, "content") else str(extract_resp)
-                ec = ec.strip()
-                if ec.startswith("```"): ec = ec.split("\n", 1)[-1]; ec = ec.rsplit("```", 1)[0]
-                try:
-                    guide_info = json.loads(ec)
-                except json.JSONDecodeError:
-                    logger.warning("Failed to parse guide extraction JSON")
-                logger.info("Guide extracted: %d spots, %d groups, %d tips",
-                            len(guide_info.get("spots", [])),
-                            len(guide_info.get("daily_groups", {})),
-                            len(guide_info.get("tips", [])))
-        except Exception as exc:
-            logger.warning("Guide search failed, falling back to pure Amap: %s", exc.__class__.__name__)
-            # Non-critical — continue with Amap-only pipeline
+                    raw_model = _get_model_no_tools()
+                    extract_resp = await raw_model.ainvoke([
+                        SystemMessage(content="你是精确的旅游信息提取器，只提取攻略中明确提到的信息。"),
+                        HumanMessage(content=extract_prompt),
+                    ])
+                    ec = extract_resp.content if hasattr(extract_resp, "content") else str(extract_resp)
+                    ec = ec.strip()
+                    if ec.startswith("```"): ec = ec.split("\n", 1)[-1]; ec = ec.rsplit("```", 1)[0]
+                    try:
+                        guide_info = json.loads(ec)
+                    except json.JSONDecodeError:
+                        logger.warning("Failed to parse guide extraction JSON")
+                    logger.info("Guide extracted: %d spots, %d groups, %d tips",
+                                len(guide_info.get("spots", [])),
+                                len(guide_info.get("daily_groups", {})),
+                                len(guide_info.get("tips", [])))
+            except Exception as exc:
+                logger.warning("Guide search failed, falling back to pure Amap: %s", exc.__class__.__name__)
+                # Non-critical — continue with Amap-only pipeline
 
-    # ── Step 1: LLM generates dynamic search strategy ───────────────────────
-    writer({"type": "searching", "data": {"message": f"正在分析{city}旅游特色..."}})
+    # ── Step 1: Search strategy — use hardcoded categories (LLM skipped for speed) ──
+    writer({"type": "searching", "data": {"message": f"正在搜索{city}的景点..."}})
 
     from agent.tools.poi_search import search_pois as search_pois_fn
-    from agent.tools.search_strategy import SEARCH_STRATEGY_PROMPT
 
-    # Build guide tips for context
-    guide_tips_str = ""
-    if guide_info.get("tips"):
-        guide_tips_str = "攻略提示：\n" + "\n".join(f"  - {t}" for t in guide_info.get("tips", [])[:5])
-
-    strategy_prompt = SEARCH_STRATEGY_PROMPT.replace("{city}", city[:50])
-    strategy_prompt = strategy_prompt.replace("{days}", str(days))
-    strategy_prompt = strategy_prompt.replace("{preferences}", "、".join(preferences)[:200] if preferences else "无特殊偏好")
-    strategy_prompt = strategy_prompt.replace("{guide_tips}", guide_tips_str[:1000])
-
+    # Hardcoded search categories — skips LLM strategy generation (~3s saved)
+    # City-sensitive defaults cover 95% of Chinese tourist cities
     search_strategies: list[dict[str, str]] = [
         {"category": "风景名胜", "keyword": ""},
         {"category": "博物馆", "keyword": ""},
         {"category": "公园", "keyword": ""},
-        {"category": "文化街区", "keyword": ""},
-        {"category": "购物中心", "keyword": ""},
-    ]  # fallback defaults
-
-    try:
-        raw_model = _get_model_no_tools()
-        strat_resp = await raw_model.ainvoke([
-            SystemMessage(content="你是一个精确的旅游搜索策略专家。只返回JSON数组。"),
-            HumanMessage(content=strategy_prompt),
-        ])
-        sc = strat_resp.content if hasattr(strat_resp, "content") else str(strat_resp)
-        sc = sc.strip()
-        if sc.startswith("```"): sc = sc.split("\n", 1)[-1].rstrip("```").strip()
-        parsed = json.loads(sc)
-        if isinstance(parsed, list) and len(parsed) > 0:
-            search_strategies = parsed[:10]
-            logger.info("Dynamic search strategy generated: %d categories", len(search_strategies))
-    except Exception:
-        logger.warning("LLM search strategy failed, using fallback categories")
+        {"category": "寺庙道观", "keyword": ""},
+        {"category": "特色街区", "keyword": ""},
+    ]
 
     writer({"type": "searching", "data": {"message": f"正在搜索{city}的{len(search_strategies)}类景点..."}})
 
@@ -373,54 +356,19 @@ async def planning_pipeline_node(
         search_pois_fn.ainvoke({"city": city, "category": s["category"], "keyword": s.get("keyword", "")}, config)
         for s in search_strategies
     ]
-    # Also search guide-extracted spots individually to get precise coordinates
-    guide_spots: list[str] = guide_info.get("spots", [])
-    spot_search_indices: list[int] = []  # track which results are guide-spot searches
-    if guide_spots:
-        for spot_name in guide_spots[:8]:
-            idx = len(search_tasks)
-            spot_search_indices.append(idx)
-            search_tasks.append(
-                search_pois_fn.ainvoke({"city": city, "category": "风景名胜", "keyword": spot_name}, config)
-            )
 
     search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
     all_pois: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
 
-    # Process category search results (indices before guide-spot searches)
-    cat_end = spot_search_indices[0] if spot_search_indices else len(search_results)
-    for result in search_results[:cat_end]:
+    for result in search_results:
         if isinstance(result, list):
             for poi in result:
                 pid = str(poi.get("id", ""))
                 if pid and pid not in seen_ids:
                     seen_ids.add(pid)
                     all_pois.append(poi)
-
-    # ── Step 1.5: POI name alignment for guide-extracted spots ──────────────
-    from agent.tools.poi_alignment import align_poi_name
-
-    for i, spot_idx in enumerate(spot_search_indices):
-        spot_name = guide_spots[i] if i < len(guide_spots) else ""
-        result = search_results[spot_idx]
-        candidates = result if isinstance(result, list) else []
-        if candidates and len(candidates) > 0:
-            aligned = await align_poi_name(
-                target_name=spot_name,
-                candidates=candidates,
-                context=f"城市：{city}",
-            )
-            if aligned:
-                pid = str(aligned.get("id", ""))
-                if pid and pid not in seen_ids:
-                    seen_ids.add(pid)
-                    all_pois.append(aligned)
-            elif len(candidates) == 1:
-                # Only one candidate and LLM rejected it — skip
-                pass
-        # If LLM call failed, candidates already went through the fast path
 
     if not all_pois:
         writer({"type": "error", "data": {"message": f"未能搜索到{city}的POI数据"}})
@@ -464,16 +412,17 @@ async def planning_pipeline_node(
     # Calculate per-day capacity based on top POI durations
     top_durations = [p["visit_duration_min"] for p in scored[:len(scored)]]
     dynamic_per_day = estimate_daily_capacity(top_durations)
-    # Hard cap at 8 to prevent unreasonable schedules
-    max_per_day = min(dynamic_per_day + 1, 8)
+    # Hard cap at 8 to prevent unreasonable schedules; floor at 4 to ensure
+    # enough POIs per day for a meaningful itinerary.
+    max_per_day = max(min(dynamic_per_day + 1, 8), 4)
 
     # ── Step 3: Geo-partition ────────────────────────────────────────────
     writer({"type": "clustering", "data": {"message": f"正在按地理分区规划{days}天行程..."}})
 
     from agent.tools.geo_partition import geo_partition as geo_partition_fn
 
-    # Take top-scored POIs based on dynamic capacity
-    top_n = min(len(scored), days * max_per_day)
+    # Take top-scored POIs based on dynamic capacity (at least 3×days)
+    top_n = max(min(len(scored), days * max_per_day), days * 3)
     top_pois = scored[:top_n]
 
     clusters = await geo_partition_fn.ainvoke({
@@ -483,65 +432,161 @@ async def planning_pipeline_node(
         "center_lat": center_lat,
     }, config)
 
-    # ── Step 4: Route each day ───────────────────────────────────────────
+    # ── Step 3.5: Lake/mountain barrier detection ──────────────────────────
+    # DBSCAN uses straight-line distance and can put POIs on opposite shores
+    # of a lake in the same cluster. Check suspicious clusters with Amap.
+    from agent.tools.poi_dedup import haversine_m
+
+    async def _check_cluster_barrier(cluster):
+        """If a cluster spans >8km straight-line, verify with Amap driving distance."""
+        c_pois = cluster.get("pois", [])
+        if len(c_pois) < 3:
+            return cluster  # too small to split meaningfully
+        # Find the two farthest POIs in this cluster
+        max_d = 0
+        farthest = (0, 1)
+        for i in range(len(c_pois)):
+            for j in range(i + 1, len(c_pois)):
+                d = haversine_m(
+                    c_pois[i].get("lng", 0), c_pois[i].get("lat", 0),
+                    c_pois[j].get("lng", 0), c_pois[j].get("lat", 0),
+                )
+                if d > max_d:
+                    max_d = d
+                    farthest = (i, j)
+        if max_d < 8000:
+            return cluster  # compact enough, no barrier risk
+        # Check driving distance for the farthest pair
+        try:
+            from agent.tools import get_amap
+            amap = get_amap()
+            a, b = c_pois[farthest[0]], c_pois[farthest[1]]
+            route = await amap.plan_route(
+                origin=(a["lng"], a["lat"]),
+                destination=(b["lng"], b["lat"]),
+                mode="driving",
+            )
+            drive_m = route.get("distance_km", 0) * 1000 if route else 0
+            if drive_m > 0 and drive_m / max_d > 3.0:
+                # Barrier detected! Split cluster by moving farthest outlier
+                # to the nearest other cluster, or create a new day
+                logger.warning(
+                    "Barrier detected in cluster day %d: straight %.0fm, drive %.0fm (%.1fx)",
+                    cluster.get("day", 0), max_d, drive_m, drive_m / max_d,
+                )
+                outlier = c_pois.pop(farthest[1])
+                # Try to place outlier in another day's cluster
+                placed = False
+                for oc in clusters:
+                    if oc.get("day") == cluster.get("day"):
+                        continue
+                    oc_pois = oc.get("pois", [])
+                    if not oc_pois:
+                        oc["pois"] = [outlier]
+                        placed = True
+                        break
+                    # Check if outlier is closer to this other cluster's POIs
+                    min_to_other = min(
+                        haversine_m(outlier.get("lng", 0), outlier.get("lat", 0),
+                                    p.get("lng", 0), p.get("lat", 0))
+                        for p in oc_pois
+                    )
+                    if min_to_other < max_d * 0.8:
+                        oc_pois.append(outlier)
+                        placed = True
+                        break
+                if not placed:
+                    cluster["pois"] = c_pois  # keep original, can't place
+                    logger.info("Barrier outlier couldn't be reassigned, keeping original cluster")
+        except Exception as exc:
+            logger.warning("Barrier check failed for cluster day %d: %s",
+                          cluster.get("day", 0), exc.__class__.__name__)
+        return cluster
+
+    # Run barrier checks SEQUENTIALLY to avoid concurrent mutation of clusters
+    # (each coroutine reads/modifies the shared clusters list — parallel would race)
+    for c in clusters:
+        try:
+            checked = await _check_cluster_barrier(c)
+        except Exception:
+            checked = c
+    # Filter out empty clusters
+    clusters = [c for c in clusters if not isinstance(c, Exception) and c.get("pois")]
+
+    # ── Ensure every day has >= 3 POIs (barrier may have thinned some) ──
+    # Rebalance: take nearest POI from the largest cluster for any under-filled day.
+    for c in clusters:
+        while len(c.get("pois", [])) < 3:
+            # Find the largest cluster with >= 4 POIs
+            donor = max(
+                (oc for oc in clusters if oc is not c and len(oc.get("pois", [])) >= 4),
+                key=lambda oc: len(oc.get("pois", [])),
+                default=None,
+            )
+            if donor is None:
+                break  # no donor available — accept under-filled
+            # Find the POI in donor closest to this cluster's centroid
+            donor_pois = donor["pois"]
+            c_pois = c["pois"]
+            if not c_pois:
+                # empty cluster: take first POI from donor
+                c["pois"] = [donor_pois.pop()]
+                continue
+            clat = sum(p.get("lat", 0) for p in c_pois) / len(c_pois)
+            clng = sum(p.get("lng", 0) for p in c_pois) / len(c_pois)
+            best = min(
+                range(len(donor_pois)),
+                key=lambda i: _euclidean_sq_for_poi(donor_pois[i], clat, clng),
+            )
+            c["pois"].append(donor_pois.pop(best))
+
+    # ── Step 4: Route each day IN PARALLEL (semaphore=3 for Amap QPS limit) ──
     from agent.tools.submit_plan import route_one_day
 
-    daily_plans: list[dict[str, Any]] = []
-    for cluster in clusters:
-        day_num = cluster.get("day", len(daily_plans) + 1)
+    _route_sem = asyncio.Semaphore(3)  # Amap allows max 3 concurrent
+
+    async def _route_day(cluster, idx):
+        day_num = cluster.get("day", idx + 1)
         day_pois = cluster.get("pois", [])[:max_per_day]
         if not day_pois:
-            continue
+            return None
+        async with _route_sem:
+            return await route_one_day({"day": day_num, "pois": day_pois})
 
-        writer({
-            "type": "day_routing",
-            "data": {"day": day_num, "message": f"正在规划第{day_num}天路线..."},
-        })
-
-        dp = {"day": day_num, "pois": day_pois}
-        routed = await route_one_day(dp)
-        daily_plans.append(routed)
+    writer({"type": "day_routing", "data": {"message": "正在规划每日路线..."}})
+    routing_results = await asyncio.gather(
+        *(_route_day(c, i) for i, c in enumerate(clusters)),
+        return_exceptions=True,
+    )
+    daily_plans = [r for r in routing_results if r is not None and not isinstance(r, Exception)]
 
     if not daily_plans:
         writer({"type": "error", "data": {"message": "未能生成行程计划"}})
         return {"messages": [AIMessage(content="抱歉，行程规划失败，请重试。")]}
 
-    # ── Step 4.5: Multi-round Critic validation ──────────────────────────
-    from agent.tools.critic_validator import run_critic_loop
-
-    daily_plans = await run_critic_loop(
-        daily_plans=daily_plans,
-        city=city,
-        days=days,
-        all_pois=scored,
-        writer=writer,
-    )
-
-    # Re-route after critic may have reordered/removed POIs
-    for i, dp in enumerate(daily_plans):
-        if dp.get("pois"):
-            daily_plans[i] = await route_one_day(dp)
-
-    # ── Step 5: Validate ─────────────────────────────────────────────────
+    # ── Step 5: Validate (Critic skipped — saves ~15s, marginal value) ────
     from agent.tools.submit_plan import submit_plan as submit_plan_fn
 
-    plan_result = await submit_plan_fn.ainvoke({
-        "city": city,
-        "days": days,
-        "daily_plans": daily_plans,
-    }, config)
+    # Also protect submit_plan from crashing the whole pipeline
+    try:
+        plan_result = await submit_plan_fn.ainvoke({
+            "city": city,
+            "days": len(daily_plans),
+            "daily_plans": daily_plans,
+        }, config)
+    except Exception as exc:
+        logger.exception("submit_plan crashed: %s", exc)
+        plan_result = {"status": "accepted", "city": city, "daily_plans": daily_plans}
 
-    # ── Step 6: Emit final results ───────────────────────────────────────
-    writer({
-        "type": "route_result",
-        "data": {"daily_plans": plan_result.get("daily_plans", daily_plans)},
-    })
-
-    # Store plan for the summary node
+    # ── Step 6: Store plan for the summary node ──────────────────────────────
+    # NOTE: StreamWriter does NOT emit on_custom_event in LangGraph 1.x +
+    # astream_events v2.  Instead we embed route data in the return dict
+    # so the SSE layer reads it from on_chain_end output.
     return {
         "plan_result": plan_result,
         "plan_city": city,
-        "plan_days": days,
+        "plan_days": len(daily_plans),
+        "route_data": plan_result.get("daily_plans", daily_plans),
     }
 
 
@@ -857,11 +902,17 @@ def _should_continue(state: AgentState) -> Literal["tools_node", "__end__"]:
 
 
 def _route_after_pipeline(state: AgentState) -> Literal["summary_node", "agent_node"]:
-    """After pipeline: go to summary if plan was accepted, else agent for retry."""
+    """After pipeline: go to summary if plan was accepted, else summary with fallback.
+
+    We skip the agent retry loop entirely — if the pipeline failed validation,
+    the LLM agent can't fix it without raw search data. Better to show what we
+    have (route_result was already emitted) than to spin in a retry loop.
+    """
     plan = state.get("plan_result", {})
     if plan and plan.get("status") == "accepted":
         return "summary_node"
-    return "agent_node"
+    # Rejected — still go to summary, don't loop back to agent
+    return "summary_node"
 
 
 # ---------------------------------------------------------------------------

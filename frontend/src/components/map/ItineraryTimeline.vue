@@ -162,6 +162,14 @@ function categoryIcon(cat: string | undefined): string {
     return "📍";
 }
 
+/** Clean Amap multi-level category (e.g. "风景名胜;风景名胜;寺庙道观" → "风景名胜") */
+function cleanCategory(cat: string | undefined): string {
+    if (!cat) return "";
+    // Take first segment before semicolon, strip redundant suffixes
+    const first = cat.split(";")[0] || "";
+    return first.replace(/;.*$/, "").trim();
+}
+
 function formatTimeSlot(slot: string | undefined): string {
     if (!slot) return "";
     // New format: "09:00 - 10:30" — display as-is
@@ -319,13 +327,7 @@ function formatTimeSlot(slot: string | undefined): string {
                             </div>
                             <div class="itin__stop-meta">
                                 <span
-                                    v-if="poi.meal_type"
-                                    class="itin__chip itin__chip--meal"
-                                >
-                                    {{ poi.meal_type === 'lunch' ? '🍴 午餐' : '🍴 晚餐' }}
-                                </span>
-                                <span
-                                    v-if="poi.visit_duration_min && !poi.meal_type"
+                                    v-if="poi.visit_duration_min"
                                     class="itin__chip itin__chip--duration"
                                 >
                                     {{ formatDuration(poi.visit_duration_min) }}
@@ -337,7 +339,7 @@ function formatTimeSlot(slot: string | undefined): string {
                                     {{ formatTimeSlot(poi.time_slot) }}
                                 </span>
                                 <span v-if="poi.category" class="itin__chip itin__chip--category">
-                                    {{ categoryIcon(poi.category) }} {{ poi.category }}
+                                    {{ categoryIcon(poi.category) }} {{ cleanCategory(poi.category) }}
                                 </span>
                                 <span
                                     v-if="poi.rating != null"
@@ -798,14 +800,6 @@ function formatTimeSlot(slot: string | undefined): string {
     color: var(--color-sage);
     background: rgba(126, 148, 112, 0.08);
     border-color: rgba(126, 148, 112, 0.25);
-}
-
-.itin__chip--meal {
-    color: #c6903a;
-    background: rgba(198, 144, 58, 0.1);
-    border-color: rgba(198, 144, 58, 0.25);
-    text-transform: none;
-    letter-spacing: normal;
 }
 
 .itin__chip--category {

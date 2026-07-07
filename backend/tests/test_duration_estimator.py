@@ -111,13 +111,14 @@ class TestEstimateDailyCapacity:
 
     def test_long_pois_limit_count(self):
         # 240, then +240+15=255, then +240+15=255 → total 240+255+255=750 > 735 → 2
+        # But floor is now 3 — ensure we get at least 3
         cap = estimate_daily_capacity([240, 240, 240])
-        assert cap == 2
+        assert cap == 3
 
-    def test_minimum_two_pois(self):
-        # Even if durations are huge, return at least 2
+    def test_minimum_three_pois(self):
+        # Even if durations are huge, return at least 3
         cap = estimate_daily_capacity([400, 400, 400])
-        assert cap == 2
+        assert cap == 3
 
     def test_mixed_durations(self):
         # 180 + (120+15) + (90+15) + (60+15) + (45+15) + (30+15)
@@ -125,9 +126,9 @@ class TestEstimateDailyCapacity:
         cap = estimate_daily_capacity([180, 120, 90, 60, 45, 30])
         assert cap == 6
 
-    def test_empty_list_returns_two(self):
+    def test_empty_list_returns_minimum(self):
         cap = estimate_daily_capacity([])
-        assert cap == 2
+        assert cap == 3
 
     def test_custom_commute(self):
         # 120 + (120+30)×4 = 120 + 150×4 = 720 < 735 → all 5 fit

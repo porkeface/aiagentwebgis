@@ -267,6 +267,9 @@ def _build_route_result_from_pipeline(
                     "category": ref.get("category", ""),
                     "lng": float(ref_lng) if ref_lng else 0.0,
                     "lat": float(ref_lat) if ref_lat else 0.0,
+                    "time_slot": ref.get("time_slot"),
+                    "visit_duration_min": ref.get("visit_duration_min"),
+                    "meal_type": ref.get("meal_type"),
                 })
                 continue
             day_pois.append({
@@ -280,6 +283,9 @@ def _build_route_result_from_pipeline(
                 "tags": full.get("tags", []),
                 "photo": full.get("photo"),
                 "description": full.get("description"),
+                "time_slot": ref.get("time_slot"),
+                "visit_duration_min": ref.get("visit_duration_min"),
+                "meal_type": ref.get("meal_type"),
             })
 
         formatted_plans.append({
@@ -572,8 +578,26 @@ async def _event_generator(
                                 "data": {"content": chunk.content},
                             })
     
-                    # ── LLM thinking start ──
-                    elif kind == "on_chat_model_start":
+                    # ── Chain ends: pipeline emits route_result via return dict ──
+                    elif kind == "on_chain_end" and name == "planning_pipeline":
+                        output = data.get("output", {})
+                        route_data = output.get("route_data", [])
+                        if route_data:
+                            route_event = _build_route_result_from_pipeline(
+                                {"daily_plans": route_data}, registry
+                            )
+                            if route_event:
+                                parsed = json.loads(route_event.split("\n")[1].replace("data: ", "", 1))
+                                map_snapshot["routes"] = parsed.get("data", {}).get("daily_plans", [])
+                                yield route_event
+                        plan_summary = output.get("plan_result", {})
+                        if plan_summary.get("status") == "accepted":
+                            summary = _build_plan_summary_event(plan_summary)
+                            if summary:
+                                yield summary
+
+                    # ── Chain starts ──
+                    elif kind == "on_chain_start":
                         accumulated_text = ""
                         yield _format_sse_event("message", {
                             "type": "thinking",

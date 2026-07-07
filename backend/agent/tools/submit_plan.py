@@ -204,9 +204,11 @@ async def submit_plan(
               ]
             }
     """
-    # ── Ensure visit_duration_min is computed for every POI ──
+    # ── Normalize POI fields: Amap returns "id", validator expects "poi_id" ──
     for dp in daily_plans:
         for p in dp.get("pois", []):
+            if not p.get("poi_id") and p.get("id"):
+                p["poi_id"] = p["id"]
             if not p.get("visit_duration_min"):
                 p["visit_duration_min"] = estimate_poi_duration_from_dict(p)
 
@@ -304,6 +306,13 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
         dx = dlng * math.cos(lat_mid)
         return math.sqrt(dlat**2 + dx**2) * 6371.0
 
+    def _straight_duration(km: float, mode: str) -> float:
+        """Estimate duration from straight-line distance without an API call."""
+        if mode == "walking":
+            return km * 12.0  # ~5 km/h
+        else:
+            return max(km / 0.6, 1.0)  # driving ~36 km/h in city, min 1 min
+
     pois = dp.get("pois", [])
     result: dict[str, Any] = {
         "day": dp.get("day"),
@@ -323,68 +332,70 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
             total_distance = 0.0
             total_transit = 0.0
             all_polylines: list[str] = []
-            all_segments: list[dict[str, Any]] = []
+            all_segments: list[dict[str, Any]] = [{} for _ in range(len(ordered) - 1)]
 
-            for i in range(len(ordered) - 1):
-                a, b = ordered[i], ordered[i + 1]
+            # Semaphore to respect Amap QPS limit (max 3 concurrent)
+            _amap_sem = asyncio.Semaphore(3)
+
+            async def _route_leg(i: int, a: dict[str, Any], b: dict[str, Any]):
                 origin = (a["lng"], a["lat"])
                 destination = (b["lng"], b["lat"])
                 dist_km = _straight_km(a, b)
 
                 if dist_km < 0.05:
-                    all_segments.append({
+                    return (i, 0.0, 1.0, "walking", "", {
                         "distance_km": round(dist_km, 2),
                         "duration_min": 1,
                         "mode": "walking",
                     })
-                    continue
 
-                # ---- Short leg: walking only (don't waste an API call on driving) ----
+                # ---- Short leg: walking only ----
                 if dist_km < _WALK_FORCE_KM:
-                    try:
-                        route = await amap.plan_route(
-                            origin=origin, destination=destination, mode="walking",
-                        )
-                    except Exception:
-                        _fallback_leg(all_segments, dist_km)
-                        continue
-                    all_segments.append({
+                    async with _amap_sem:
+                        try:
+                            route = await amap.plan_route(
+                                origin=origin, destination=destination, mode="walking",
+                            )
+                        except Exception:
+                            route = None
+                    if route is None:
+                        _fallback_leg(all_segments, i, dist_km)
+                        return (i, 0.0, _straight_duration(dist_km, "walking"), "walking", "", None)
+                    poly = route.get("polyline", "")
+                    return (i, route.get("distance_km", 0), route.get("duration_min", 0), "walking", poly, {
                         "distance_km": round(route.get("distance_km", 0), 2),
                         "duration_min": round(route.get("duration_min", 0), 2),
                         "mode": "walking",
                     })
-                    poly = route.get("polyline", "")
-                    if poly:
-                        all_polylines.append(poly)
-                    total_distance += route.get("distance_km", 0)
-                    total_transit += route.get("duration_min", 0)
-                    continue
 
-                # ---- Long leg: compare walking vs driving real durations ----
-                w_route: dict[str, Any] | None = None
-                d_route: dict[str, Any] | None = None
-                try:
-                    w_route = await amap.plan_route(
-                        origin=origin, destination=destination, mode="walking",
-                    )
-                except Exception:
-                    pass
-                try:
-                    d_route = await amap.plan_route(
-                        origin=origin, destination=destination, mode="driving",
-                    )
-                except Exception:
-                    pass
+                # ---- Long leg: walk + drive IN PARALLEL ----
+                async def _call_walk():
+                    async with _amap_sem:
+                        try:
+                            return await amap.plan_route(
+                                origin=origin, destination=destination, mode="walking",
+                            )
+                        except Exception:
+                            return None
+
+                async def _call_drive():
+                    async with _amap_sem:
+                        try:
+                            return await amap.plan_route(
+                                origin=origin, destination=destination, mode="driving",
+                            )
+                        except Exception:
+                            return None
+
+                w_route, d_route = await asyncio.gather(_call_walk(), _call_drive())
 
                 if w_route is None and d_route is None:
-                    _fallback_leg(all_segments, dist_km)
-                    continue
+                    _fallback_leg(all_segments, i, dist_km)
+                    return (i, 0.0, _straight_duration(dist_km, "driving"), "driving", "", None)
 
                 w_min = w_route.get("duration_min", 9999) if w_route else 9999
                 d_min = d_route.get("duration_min", 9999) if d_route else 9999
 
-                # Walking wins when: it's not too slow AND (shorter duration OR
-                # within acceptable range compared to driving).
                 walk_wins = (
                     w_route is not None
                     and w_min <= _WALK_MAX_MIN
@@ -397,18 +408,32 @@ async def route_one_day(dp: dict[str, Any]) -> dict[str, Any]:
                 elif w_route is not None:
                     best, mode = w_route, "walking"
                 else:
-                    best, mode = d_route, "driving"  # type: ignore[assignment]
+                    best, mode = d_route, "driving"
 
-                all_segments.append({
+                poly = best.get("polyline", "")
+                return (i, best.get("distance_km", 0), best.get("duration_min", 0), mode, poly, {
                     "distance_km": round(best.get("distance_km", 0), 2),
                     "duration_min": round(best.get("duration_min", 0), 2),
                     "mode": mode,
                 })
-                poly = best.get("polyline", "")
+
+            # Route ALL segments in parallel
+            leg_tasks = [
+                _route_leg(i, ordered[i], ordered[i + 1])
+                for i in range(len(ordered) - 1)
+            ]
+            leg_results = await asyncio.gather(*leg_tasks, return_exceptions=True)
+
+            for item in leg_results:
+                if isinstance(item, Exception):
+                    continue
+                idx, dist, dur, mode, poly, seg = item
+                if seg is not None:
+                    all_segments[idx] = seg
+                total_distance += dist
+                total_transit += dur
                 if poly:
                     all_polylines.append(poly)
-                total_distance += best.get("distance_km", 0)
-                total_transit += best.get("duration_min", 0)
 
             result["total_distance_km"] = round(total_distance, 2)
             result["total_transit_min"] = round(total_transit, 2)
@@ -430,10 +455,10 @@ def _assign_time_slots(dp: dict[str, Any]) -> None:
     transit time from the corresponding segment before the next POI starts.
     POIs without visit_duration_min get a 60-min default.
 
-    For days with >= 4 POIs, a 60-min lunch break is inserted around 12:00
-    and a 60-min dinner break around 18:00.  These appear as inline markers
-    (meal_type="lunch"/"dinner") in the POI list so the frontend can render
-    a distinct chip.
+    For days with >= 4 POIs, a 60-min lunch break (12:00) and dinner break
+    (18:00) add to total elapsed time, adjusting subsequent POI time_slots.
+    No synthetic "午餐"/"晚餐" POIs are inserted — real restaurants come from
+    Amap search results.
     """
     HOUR = 60
     START_H = 8
@@ -475,54 +500,31 @@ def _assign_time_slots(dp: dict[str, Any]) -> None:
         if i < len(pois) - 1 and i < len(segments):
             transit = int(segments[i].get("duration_min", 0) or 0)
 
-        # Only insert meal breaks when there are enough POIs
-        if len(pois) < 4:
-            total_min += transit
-            continue
+        # Only insert meal breaks when there are enough POIs.
+        # We still add the meal time gap to total_min (so next POI's
+        # time_slot accounts for it) but we do NOT insert synthetic
+        # "午餐"/"晚餐" POIs — those look fake.  Real restaurants come
+        # from the Amap search results.
+        if len(pois) >= 4:
+            # Lunch: 60-min pause after the POI whose end time crosses 12:00
+            if not lunch_done and end_h * HOUR + end_m >= LUNCH_TARGET:
+                lunch_done = True
+                total_min += MEAL_MIN
 
-        # Lunch: insert after the POI whose end time first crosses 12:00
-        if not lunch_done and end_h * HOUR + end_m >= LUNCH_TARGET:
-            lunch_done = True
-            lunch_start = total_min
-            total_min += MEAL_MIN
-            out.append({
-                "name": "午餐",
-                "category": "用餐",
-                "meal_type": "lunch",
-                "lng": poi.get("lng"),
-                "lat": poi.get("lat"),
-                "time_slot": f"{lunch_start // HOUR:02d}:{lunch_start % HOUR:02d} - {total_min // HOUR:02d}:{total_min % HOUR:02d}",
-                "visit_duration_min": MEAL_MIN,
-            })
-
-        # Dinner: insert after the POI whose end time first crosses 18:00
-        if not dinner_done and end_h * HOUR + end_m >= DINNER_TARGET:
-            dinner_done = True
-            dinner_start = total_min
-            total_min += MEAL_MIN
-            out.append({
-                "name": "晚餐",
-                "category": "用餐",
-                "meal_type": "dinner",
-                "lng": poi.get("lng"),
-                "lat": poi.get("lat"),
-                "time_slot": f"{dinner_start // HOUR:02d}:{dinner_start % HOUR:02d} - {total_min // HOUR:02d}:{total_min % HOUR:02d}",
-                "visit_duration_min": MEAL_MIN,
-            })
+            # Dinner: 60-min pause after the POI whose end time crosses 18:00
+            if not dinner_done and end_h * HOUR + end_m >= DINNER_TARGET:
+                dinner_done = True
+                total_min += MEAL_MIN
 
         total_min += transit
 
     dp["pois"] = out
 
 
-def _fallback_leg(segments: list[dict[str, Any]], straight_km: float) -> None:
-    """Haversine-based leg when Amap call fails for a single pair.
-
-    Distance and duration match the backend's walking pace (~5 km/h),
-    so we tag the leg with `mode="walking"` to keep the UI consistent.
-    """
-    segments.append({
+def _fallback_leg(segments: list[dict[str, Any]], idx: int, straight_km: float) -> None:
+    """Haversine-based fallback when Amap call fails — writes to segments[idx]."""
+    segments[idx] = {
         "distance_km": round(straight_km, 2),
         "duration_min": round(straight_km * 12, 1),  # walking pace ~5 km/h
         "mode": "walking",
-    })
+    }

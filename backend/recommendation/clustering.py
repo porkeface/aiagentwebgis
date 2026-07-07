@@ -29,7 +29,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 _MAX_SPREAD_KM = 35       # per-cluster max haversine distance from centroid
-_MIN_POIS_PER_DAY = 2     # every day must have at least 2 POIs
+_MIN_POIS_PER_DAY = 3     # every day must have at least 3 POIs
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +129,7 @@ def _cluster_spread_km(
 
 
 def _merge_nearest_pair(
+    coords: np.ndarray,
     labels: np.ndarray,
     centroids: dict[int, tuple[float, float]],
 ) -> tuple[np.ndarray, dict[int, tuple[float, float]]]:
@@ -226,7 +227,7 @@ def _adjust_to_n_clusters(
 
     # Merge down
     while len(cur_centroids) > n_days and iterations < max_iterations:
-        cur_labels, cur_centroids = _merge_nearest_pair(cur_labels, cur_centroids)
+        cur_labels, cur_centroids = _merge_nearest_pair(coords, cur_labels, cur_centroids)
         iterations += 1
 
     # Split up
