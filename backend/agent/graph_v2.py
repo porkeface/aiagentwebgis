@@ -447,8 +447,11 @@ async def planning_pipeline_node(
 
     from agent.tools.geo_partition import geo_partition as geo_partition_fn
 
-    # Take top-scored POIs based on dynamic capacity (at least 3×days)
-    top_n = max(min(len(scored), days * max_per_day), days * 3)
+    # Take top-scored POIs — keep ALL candidates the LLM curated so the
+    # partition step can distribute them across days, instead of trimming
+    # at the door.  We still cap at a generous upper bound to avoid
+    # runaway plans (32 POIs ÷ N days is plenty).
+    top_n = min(len(scored), max(days * 8, 32))
     top_pois = scored[:top_n]
 
     clusters = await geo_partition_fn.ainvoke({
@@ -738,9 +741,32 @@ async def planning_pipeline_node(
 
     _route_sem = asyncio.Semaphore(3)  # Amap allows max 3 concurrent
 
+    # Day time budget for visit_duration sum (8:30 → 22:00 = 13.5h = 810 min).
+    # We leave headroom for 120 min meals + estimated transit (N-1)×10 min,
+    # so 600 min of pure visit time leaves ~90 min for transit + meals.
+    _DAY_VISIT_BUDGET = 600  # 10h of pure POI time
+
     async def _route_day(cluster, idx):
         day_num = cluster.get("day", idx + 1)
-        day_pois = cluster.get("pois", [])[:max_per_day]
+        # Cap by both count (max_per_day) AND visit-duration sum so a cluster
+        # of 6×2h POIs (12h) still fits within 8:30–22:00 after meals + transit.
+        # POIs are already TSP-sorted by Amap; the budget cut takes the
+        # earliest N whose visit_duration sum stays under the cap.
+        all_pois = cluster.get("pois", [])
+        capped: list[dict[str, Any]] = []
+        running_total = 0
+        for p in all_pois:
+            if len(capped) >= max_per_day:
+                break
+            d = p.get("visit_duration_min") or 60
+            if isinstance(d, (int, float)) and running_total + d > _DAY_VISIT_BUDGET and capped:
+                # Already at least 1 POI, and adding this one would push the
+                # day past 13.5h.  Drop the rest — the next-day reassignment
+                # loop below can rescue borderline cases.
+                break
+            capped.append(p)
+            running_total += d
+        day_pois = capped
         if not day_pois:
             return None
         async with _route_sem:

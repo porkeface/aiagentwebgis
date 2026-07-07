@@ -459,6 +459,10 @@ def _assign_time_slots(dp: dict[str, Any]) -> None:
     (18:00) add to total elapsed time, adjusting subsequent POI time_slots.
     No synthetic "午餐"/"晚餐" POIs are inserted — real restaurants come from
     Amap search results.
+
+    The pipeline upstream (graph_v2._route_day) caps each cluster's POI
+    list so the visit_duration sum stays under a daily budget; this
+    function therefore stays within [08:30, 22:00] in practice.
     """
     HOUR = 60
     START_H = 8
@@ -466,6 +470,7 @@ def _assign_time_slots(dp: dict[str, Any]) -> None:
     MEAL_MIN = 60
     LUNCH_TARGET = 12 * HOUR      # 12:00
     DINNER_TARGET = 18 * HOUR      # 18:00
+    DAY_END = 22 * HOUR            # 22:00 — hard stop, drop remaining POIs
 
     total_min = START_H * HOUR + START_M  # 510 = 08:30
 
@@ -474,7 +479,6 @@ def _assign_time_slots(dp: dict[str, Any]) -> None:
     if not pois:
         return
 
-    # Map original POIs to a mutable list (we'll splice meal breaks in)
     out: list[dict[str, Any]] = []
     lunch_done = False
     dinner_done = False
@@ -488,7 +492,15 @@ def _assign_time_slots(dp: dict[str, Any]) -> None:
 
         start_h = total_min // HOUR
         start_m = total_min % HOUR
-        total_min += dur
+
+        # If this POI's end time would run past 22:00, drop it and everything
+        # after — the day is full.  This is the safety net for when transit
+        # times or meal breaks consume more budget than expected upstream.
+        end_total = total_min + dur
+        if end_total > DAY_END:
+            break
+
+        total_min = end_total
         end_h = total_min // HOUR
         end_m = total_min % HOUR
 
