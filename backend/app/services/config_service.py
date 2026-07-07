@@ -68,6 +68,21 @@ def _mask(value: str) -> str:
     return "****" + value[-4:]
 
 
+def _reload_singletons(accepted: dict[str, str]) -> None:
+    """Drop process-wide singletons that cache old config values.
+
+    Each of these creates its downstream connection/model lazily the next time
+    it is called, so clearing the singleton is enough.
+    """
+    if any(k in _AMAP_RELOAD_KEYS for k in accepted):
+        from agent.tools import reload_amap  # noqa: PLC0415
+        reload_amap()
+
+    if "LLM_API_KEY" in accepted or "LLM_MODEL" in accepted or "LLM_BASE_URL" in accepted or "LLM_PROVIDER" in accepted:
+        from agent.graph_v2 import reset_compiled_graph_v2  # noqa: PLC0415
+        reset_compiled_graph_v2()
+
+
 def _parse_env(path: Path) -> dict[str, str]:
     """Parse a .env file into a dict, preserving inline comments."""
     result: dict[str, str] = {}
@@ -197,11 +212,9 @@ def update_config(updates: dict[str, str]) -> dict[str, Any]:
         if hasattr(settings, attr):
             setattr(settings, attr, value)
 
-    # If AMAP_API_KEY changed, drop the AmapService singleton so the next
-    # request picks up the new key without a process restart.
-    if any(k in _AMAP_RELOAD_KEYS for k in accepted):
-        from agent.tools import reload_amap  # noqa: PLC0415
-        reload_amap()
+    # Drop cached singletons whose constructor reads from pydantic settings
+    # so the next request picks up the new values without a restart.
+    _reload_singletons(accepted)
 
     return {
         "updated": list(accepted.keys()),
