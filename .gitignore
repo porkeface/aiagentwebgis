@@ -42,6 +42,9 @@ htmlcov/
 # Dev artifacts — screenshots, debug logs, playwright MCP cache, temp files
 /playwright-mcp/
 /.playwright-mcp/
+/.claude/
+/.superpowers/
+/docs/superpowers/
 /screenshot.png
 /amap-loaded.png
 /frontend-home.png
