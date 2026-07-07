@@ -257,3 +257,45 @@ def test_mixed_duplicates_and_unique():
     assert len(result) == 3
     ids = {p["id"] for p in result}
     assert ids == {"a", "c", "d"}
+
+
+# ── Rule 6: service-facility suffix ────────────────────────────────────────
+
+def test_service_facility_discarded():
+    """售票处/停车场/卫生间 etc. should be discarded, keep the real POI."""
+    pois = [
+        _poi("崇圣寺三塔", 100.16, 25.70, id="a", rating=4.5),
+        _poi("崇圣寺三塔售票处", 100.165, 25.705, id="b", rating=3.0),
+    ]
+    result = deduplicate_pois(pois)
+    assert len(result) == 1
+    assert result[0]["id"] == "a"
+
+def test_parking_lot_discarded():
+    pois = [
+        _poi("鼓浪屿", 118.065, 24.45, id="a", rating=4.6),
+        _poi("鼓浪屿停车场", 118.07, 24.455, id="b", rating=3.5),
+    ]
+    result = deduplicate_pois(pois)
+    assert len(result) == 1
+    assert result[0]["id"] == "a"
+
+def test_toilet_discarded():
+    pois = [
+        _poi("中山公园", 121.47, 31.23, id="a", rating=4.3),
+        _poi("中山公园公共厕所", 121.475, 31.235, id="b", rating=3.0),
+    ]
+    result = deduplicate_pois(pois)
+    assert len(result) == 1
+    assert result[0]["id"] == "a"
+
+def test_legit_expansion_not_mistaken_for_facility():
+    """博物院/风景区 etc. are legitimate expansions, not facilities."""
+    pois = [
+        _poi("故宫", 116.397, 39.908, id="a", rating=4.7),
+        _poi("故宫博物院", 116.402, 39.913, id="b", rating=4.8),
+    ]
+    result = deduplicate_pois(pois)
+    assert len(result) == 1  # dedup via Rule 5 sub-POI, not facility rule
+    # Should keep the higher-rated one
+    assert result[0]["id"] == "b"

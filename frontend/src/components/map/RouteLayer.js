@@ -13,7 +13,7 @@
 
 // @ts-nocheck — AMap is loaded dynamically, types are not available at compile time
 
-import { DAY_COLORS } from '@/utils/constants'
+import { DAY_COLORS, categoryIcon, categoryColor } from '@/utils/constants'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const ACTIVE_OPACITY = 0.92
@@ -40,15 +40,46 @@ function getDayColor(day) {
   return DAY_COLORS[(day - 1) % DAY_COLORS.length]
 }
 
-function buildStopContent(color, num, position) {
-  const size = position === 'start' || position === 'end' ? 28 : 24
-  return `<div style="
-    width:${size}px;height:${size}px;
+function _buildMarker(icon, color, extraStyle = "") {
+  return `<div class="poi-marker" style="
+    width:18px;height:18px;
     background:${color};
-    border-radius:50%;display:flex;align-items:center;justify-content:center;
-    color:#fff;font-size:11px;font-weight:700;
-    border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);
-  ">${num}</div>`
+    border:1.5px solid #fff;
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 1px 3px rgba(0,0,0,0.4);
+    ${extraStyle}
+  ">${icon}</div>`
+}
+
+function _poiMarkerContent(poi) {
+  const icon = categoryIcon(poi.category)
+  const color = categoryColor(poi.category)
+  return _buildMarker(icon, color)
+}
+
+function buildStopContent(color, num, position, poi) {
+  const icon = categoryIcon(poi?.category)
+  const cat = categoryColor(poi?.category)
+  return `<div class="poi-marker stop" style="
+    width:26px;height:26px;
+    background:#fff;
+    border:2px solid ${color};
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 1px 4px rgba(0,0,0,0.4);
+    position:relative;
+  ">
+    <span style="display:flex;align-items:center;justify-content:center;line-height:0;">${icon}</span>
+    <span style="
+      position:absolute;bottom:-2px;right:-2px;
+      width:14px;height:14px;
+      background:${cat};border-radius:50%;
+      color:#fff;font-size:9px;font-weight:700;
+      display:flex;align-items:center;justify-content:center;
+      border:1.5px solid #fff;
+    ">${num}</span>
+  </div>`
 }
 
 /** Two-point straight line between adjacent POIs, used when a segment
@@ -160,16 +191,11 @@ export class RouteLayerRenderer {
     for (const poi of pois) {
       // Skip POIs that are already displayed as route stop markers
       if (skipIds.has(String(poi.id))) continue
-      const content = `<div class="poi-dot" data-poi-id="${poi.id}" style="
-        width:22px;height:22px;
-        background:#e8623c;border-radius:50%;
-        border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);
-        cursor:pointer;
-      "></div>`
+      const content = _poiMarkerContent(poi)
       const marker = new this._AMap.Marker({
         position: [poi.lng, poi.lat],
         content,
-        offset: new this._AMap.Pixel(-12, -12),
+        offset: new this._AMap.Pixel(-9, -9),
         zIndex: 200,
       })
       if (clickFn) {
@@ -312,12 +338,12 @@ export class RouteLayerRenderer {
         else if (i === count - 1) position = 'end'
 
         const zIndex = position === 'start' ? 500 : (position === 'end' ? 400 : 300)
-        const content = buildStopContent(color, i + 1, position)
+        const content = buildStopContent(color, i + 1, position, poi)
 
         const marker = new this._AMap.Marker({
           position: [poi.lng, poi.lat],
           content,
-          offset: new this._AMap.Pixel(-14, -14),
+          offset: new this._AMap.Pixel(-13, -13),
           zIndex,
         })
         if (clickFn) {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useMapStore, type DailyPlan, type RoutePOI } from "@/stores/map";
-import { DAY_COLORS } from "@/utils/constants";
+import { DAY_COLORS, categoryIcon, POI_GROUPS, classifyPOI } from "@/utils/constants";
 import {
   estimateDuration,
   formatDistance,
@@ -97,70 +97,6 @@ const TIME_SLOT_LABELS: Record<string, string> = {
     afternoon: "下午",
     evening: "晚间",
 };
-
-/** Category → icon mapping. Rendered as a small chip before the category label. */
-const CATEGORY_ICONS: Record<string, string> = {
-    "风景名胜": "🏔",
-    "国家级景点": "🏔",
-    "世界遗产": "🏛",
-    "博物馆": "🏛",
-    "展览馆": "🏛",
-    "美术馆": "🎨",
-    "科技馆": "🔬",
-    "寺庙道观": "🛕",
-    "教堂": "⛪",
-    "纪念馆": "🏛",
-    "公园": "🌿",
-    "城市广场": "⛲",
-    "动物园": "🦁",
-    "植物园": "🌺",
-    "水族馆": "🐠",
-    "游乐园": "🎢",
-    "主题公园": "🎢",
-    "国家级森林公园": "🌲",
-    "海滩": "🏖",
-    "岛屿": "🏝",
-    "温泉": "♨",
-    "文化街区": "🏘",
-    "历史遗址": "🏚",
-    "古村镇": "🏡",
-    "特色街区": "🏘",
-    "创意园区": "🎨",
-    "购物中心": "🛍",
-    "商业步行街": "🛍",
-    "夜市": "🏮",
-    "美食街": "🍜",
-    "特色餐厅": "🍜",
-    "电影院": "🎬",
-    "剧院": "🎭",
-    "音乐厅": "🎵",
-    "夜游": "🌃",
-    "游船": "⛵",
-    "观景台": "🔭",
-    "缆车": "🚡",
-    "运动场馆": "⚽",
-    "滑雪场": "⛷",
-    "高尔夫球场": "⛳",
-    "登山": "🥾",
-    "徒步路线": "🥾",
-    "会展中心": "🏢",
-    "用餐": "🍴",
-    "自然风光": "🌄",
-    "休闲娱乐": "🎯",
-    "特色村落": "🏡",
-    "宗教场所": "🛕",
-    "历史文化街区": "🏘",
-};
-
-function categoryIcon(cat: string | undefined): string {
-    if (!cat) return "";
-    if (CATEGORY_ICONS[cat]) return CATEGORY_ICONS[cat];
-    // Try substring match
-    for (const [key, icon] of Object.entries(CATEGORY_ICONS)) {
-        if (cat.includes(key)) return icon;
-    }
-    return "📍";
-}
 
 /** Clean Amap multi-level category (e.g. "风景名胜;风景名胜;寺庙道观" → "风景名胜") */
 function cleanCategory(cat: string | undefined): string {

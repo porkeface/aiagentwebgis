@@ -30,6 +30,26 @@ _LEGIT_EXPANSION_RE = re.compile(
     r'|(?:海滩|海滨|沙滩|浴场|码头|港口)'
 )
 
+# Blacklist: keywords that signal a SERVICE FACILITY, not a real POI.
+# "崇圣寺三塔" → "崇圣寺三塔售票处" ✗  "鼓浪屿" → "鼓浪屿停车场" ✗
+# When a longer name's suffix CONTAINS any of these keywords, discard the
+# longer name (keep the real POI / shorter name).
+_SERVICE_FACILITY_KEYWORDS_RE = re.compile(
+    r'(?:售票[处点厅窗口]|售票中心|票务[处中心])'
+    r'|(?:停车[场处库位]|泊车[场处库位]|地下停车|地面停车)'
+    r'|(?:公共厕所|卫生间|厕所|洗手间)'
+    r'|(?:寄存[处柜]|存包[处柜]|行李寄存)'
+    r'|(?:保安[亭室处]|值班[亭室]|警务[亭室站])'
+    r'|(?:垃圾[站场处理]|废物[站场回收])'
+    r'|(?:公交车站|公交枢纽|公交站)'
+    r'|(?:游船码头|轮渡码头|客运码头|渡船码头)'
+    r'|(?:停车场[进出口])'
+    r'|(?:游客[中心服务]|旅游[中心服务])'
+    r'|(?:管理[处站所]|环卫[处站所])'
+    r'|(?:[门出入]口)'
+    r'|(?:检票[口处]|安检[口处])'
+)
+
 
 def _suffix_starts_with_separator(full: str, prefix: str) -> bool:
     """Check that the remainder after `prefix` starts with a separator or is empty.
@@ -198,5 +218,24 @@ def deduplicate_pois(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             else longer_idx,
                         )
                     continue
+
+            # ── Rule 6: service-facility suffix ──────────────────────────────
+            # One name is a PURE prefix of the other (no separator), and the
+            # suffix matches a service-facility pattern.  Always discard the
+            # *longer* name (the facility) regardless of rating — "售票处",
+            # "停车场", "卫生间" etc. are not real POIs.
+            # "崇圣寺三塔" → "崇圣寺三塔售票处" ✗
+            # "鼓浪屿" → "鼓浪屿停车场" ✗
+            # "故宫" → "故宫博物院" ✓ (博物院 is a legit expansion, not facility)
+            if ni and nj:
+                for shorter_n, longer_n, si, li in (
+                    (ni, nj, i, j),
+                    (nj, ni, j, i),
+                ):
+                    if longer_n.startswith(shorter_n) and len(longer_n) > len(shorter_n):
+                        after = longer_n[len(shorter_n):]
+                        if _SERVICE_FACILITY_KEYWORDS_RE.search(after):
+                            discarded.add(li)
+                            break
 
     return [p for idx, p in enumerate(pois) if idx not in discarded]

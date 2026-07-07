@@ -79,7 +79,7 @@ INTENT_CLASSIFY_PROMPT = """你是一个意图分类器。分析用户消息，�
 
 意图类型：
 - chat: 闲聊、问候、感谢、无关话题
-- poi_query: 查询POI信息（"故宫在哪"、"北京有什么博物馆"）
+- poi_query: 查询POI信息（"故宫在哪"、"北京有什么博物馆"、"显示厦门所有POI"、"展示所有类型的兴趣点"）
 - route_query: 查询两点间路线（"从天安门到颐和园怎么走"、"XX到XX多远"）
 - trip_planning: 规划多日行程（"帮我规划北京三日游"、"安排一个周末上海行程"）
 
@@ -666,6 +666,76 @@ async def planning_pipeline_node(
         logger.info("Chain-linked cluster order: %s",
                     [c.get("day") for c in clusters])
 
+    # ── Cross-day POI reassignment (PRE-ROUTING) ────────────────────────────
+    # After clustering, every POI is assigned to exactly one day.  But cluster
+    # boundaries are drawn at centroids — a POI on the border may be closer to
+    # another day's cluster members.  This pass examines every POI: if it's
+    # closer to the nearest member of a DIFFERENT day than to its own day's
+    # farthest member, reassign it.  Pure haversine, zero API calls.
+    #
+    # The metric: for each POI p in day D, compute:
+    #   d_self  = min distance from p to any POI in day D (excluding p itself)
+    #   d_other = min distance from p to any POI in day D' (any other day)
+    # If d_other < d_self * 0.6, reassign p to day D'.
+    if len(clusters) >= 2:
+        from agent.tools.poi_dedup import haversine_m as _hm
+        _MIN_DAY = 2  # allow stripping a day down to 2 POIs (dedup may remove facility POIs)
+        total_moved = 0
+        for _round in range(2):  # two passes to handle cascading reassignments
+            round_moved = 0
+            for src_idx, src_c in enumerate(clusters):
+                src_pois = src_c.get("pois", [])
+                if len(src_pois) <= _MIN_DAY:
+                    continue  # don't strip an already-thin day
+                # Check each POI in source day
+                to_move = []
+                for pi, p in enumerate(src_pois):
+                    plng, plat = p.get("lng"), p.get("lat")
+                    if not isinstance(plng, (int, float)) or not isinstance(plat, (int, float)):
+                        continue
+                    # d_self = min distance to another POI in same day
+                    d_self = float("inf")
+                    for qi, q in enumerate(src_pois):
+                        if qi == pi:
+                            continue
+                        qlng, qlat = q.get("lng"), q.get("lat")
+                        if isinstance(qlng, (int, float)) and isinstance(qlat, (int, float)):
+                            d = _hm(plng, plat, qlng, qlat)
+                            if d < d_self: d_self = d
+                    if d_self == float("inf"):
+                        continue  # solo POI in day — keep it
+                    # d_other = min distance to ANY POI in any OTHER day
+                    best_other_day = -1
+                    d_other = float("inf")
+                    for dst_idx, dst_c in enumerate(clusters):
+                        if dst_idx == src_idx:
+                            continue
+                        for q in dst_c.get("pois", []):
+                            qlng, qlat = q.get("lng"), q.get("lat")
+                            if isinstance(qlng, (int, float)) and isinstance(qlat, (int, float)):
+                                d = _hm(plng, plat, qlng, qlat)
+                                if d < d_other:
+                                    d_other = d
+                                    best_other_day = dst_idx
+                    # Reassign if significantly closer to another day
+                    if best_other_day >= 0 and d_other < d_self * 0.8:
+                        to_move.append((pi, best_other_day))
+                # Move in reverse order (to keep indices stable)
+                for pi, dst_idx in reversed(to_move):
+                    moved = src_pois.pop(pi)
+                    clusters[dst_idx].setdefault("pois", []).append(moved)
+                    round_moved += 1
+                if to_move:
+                    logger.info(
+                        "Cross-day reassign: day %d → moved %d POIs to other days",
+                        src_c.get("day"), len(to_move),
+                    )
+            total_moved += round_moved
+            if round_moved == 0:
+                break
+        if total_moved:
+            logger.info("Cross-day reassignment: %d POIs moved across %d rounds", total_moved, _round + 1)
+
     _route_sem = asyncio.Semaphore(3)  # Amap allows max 3 concurrent
 
     async def _route_day(cluster, idx):
@@ -687,47 +757,69 @@ async def planning_pipeline_node(
         writer({"type": "error", "data": {"message": "未能生成行程计划"}})
         return {"messages": [AIMessage(content="抱歉，行程规划失败，请重试。")]}
 
-    # ── Cross-day boundary swap: if Day N's last POI is closer to Day N+1's ──
-    # cluster than to Day N's own, move it.  Symmetrically for Day N+1's first
-    # POI.  This fixes "route passes right by this POI but schedules it for
-    # tomorrow." Single-pass, pure haversine — zero API overhead.
+    # ── Cross-day boundary swap (POST-ROUTING) ─────────────────────────────
+    # After routing, check ALL day pairs (not just adjacent): if any POI in
+    # Day D is closer to the nearest POI in Day D' than to its own day's
+    # farthest neighbor, swap it.  This catches "Day 1 route passes by POI
+    # but POI is scheduled for Day 3" — which adjacent-only can't fix.
+    # Two rounds, pure haversine — zero API overhead.
     if len(daily_plans) >= 2:
         from agent.tools.poi_dedup import haversine_m as _h
-        for i in range(len(daily_plans) - 1):
-            dp_a = daily_plans[i]
-            dp_b = daily_plans[i + 1]
-            pois_a: list[dict[str, Any]] = dp_a.get("pois", [])
-            pois_b: list[dict[str, Any]] = dp_b.get("pois", [])
-            if len(pois_a) < 2 or len(pois_b) < 2:
-                continue
+        _THRESHOLD = 0.8  # threshold: d_other < d_self * 0.8 → reassign
 
-            # Day N's last POI → check if closer to Day N+1
-            tail = pois_a[-1]
-            tlng, tlat = tail.get("lng", 0), tail.get("lat", 0)
-            if isinstance(tlng, (int, float)) and isinstance(tlat, (int, float)):
-                own_clat = sum(p.get("lat", 0) for p in pois_a[:-1]) / max(len(pois_a) - 1, 1)
-                own_clng = sum(p.get("lng", 0) for p in pois_a[:-1]) / max(len(pois_a) - 1, 1)
-                dist_own = _h(tlng, tlat, own_clng, own_clat)
-                dist_next = min(_h(tlng, tlat, p.get("lng", 0), p.get("lat", 0)) for p in pois_b)
-                if dist_next < dist_own * 0.5:
-                    logger.info("Boundary swap: '%s' day %d → day %d",
-                                tail.get("name", "?"), dp_a.get("day"), dp_b.get("day"))
-                    moved = pois_a.pop()
-                    pois_b.insert(0, moved)
+        def _min_pair_dist(poi, other_pois):
+            """Minimum haversine distance from poi to any member of other_pois."""
+            plng, plat = poi.get("lng", 0), poi.get("lat", 0)
+            if not isinstance(plng, (int, float)) or not isinstance(plat, (int, float)):
+                return float("inf")
+            best = float("inf")
+            for q in other_pois:
+                qlng, qlat = q.get("lng"), q.get("lat")
+                if isinstance(qlng, (int, float)) and isinstance(qlat, (int, float)):
+                    d = _h(plng, plat, qlng, qlat)
+                    if d < best: best = d
+            return best
 
-            # Day N+1's first POI → check if closer to Day N
-            head = pois_b[0]
-            hlng, hlat = head.get("lng", 0), head.get("lat", 0)
-            if isinstance(hlng, (int, float)) and isinstance(hlat, (int, float)):
-                own_clat = sum(p.get("lat", 0) for p in pois_b[1:]) / max(len(pois_b) - 1, 1)
-                own_clng = sum(p.get("lng", 0) for p in pois_b[1:]) / max(len(pois_b) - 1, 1)
-                dist_own = _h(hlng, hlat, own_clng, own_clat)
-                dist_prev = min(_h(hlng, hlat, p.get("lng", 0), p.get("lat", 0)) for p in pois_a)
-                if dist_prev < dist_own * 0.5 and len(pois_a) > 3:
-                    logger.info("Boundary swap: '%s' day %d → day %d",
-                                head.get("name", "?"), dp_b.get("day"), dp_a.get("day"))
-                    moved = pois_b.pop(0)
-                    pois_a.append(moved)
+        total_moved = 0
+        for _round in range(2):
+            round_moved = 0
+            for src_idx, dp_src in enumerate(daily_plans):
+                src_pois = dp_src.get("pois", [])
+                _MIN_DAY = 2  # allow stripping a day down to 2
+                if len(src_pois) <= _MIN_DAY:
+                    continue
+                to_move: list[tuple[int, int]] = []  # (poi_index, dst_day_index)
+                for pi, p in enumerate(src_pois):
+                    # d_self = min distance to any OTHER POI in same day
+                    d_self = _min_pair_dist(p, [q for qi, q in enumerate(src_pois) if qi != pi])
+                    if d_self == float("inf"):
+                        continue
+                    # d_other = min distance to any POI in any OTHER day
+                    best_dst, best_dist = -1, float("inf")
+                    for dst_idx, dp_dst in enumerate(daily_plans):
+                        if dst_idx == src_idx:
+                            continue
+                        d = _min_pair_dist(p, dp_dst.get("pois", []))
+                        if d < best_dist:
+                            best_dist = d
+                            best_dst = dst_idx
+                    if best_dst >= 0 and best_dist < d_self * _THRESHOLD:
+                        to_move.append((pi, best_dst))
+                # Move in reverse index order
+                for pi, dst_idx in reversed(to_move):
+                    moved = src_pois.pop(pi)
+                    daily_plans[dst_idx].setdefault("pois", []).append(moved)
+                    round_moved += 1
+                if to_move:
+                    logger.info(
+                        "Post-route boundary swap: day %d → %d POIs reassigned",
+                        dp_src.get("day"), len(to_move),
+                    )
+            total_moved += round_moved
+            if round_moved == 0:
+                break
+        if total_moved:
+            logger.info("Post-route boundary swap: %d POIs moved total", total_moved)
 
     # ── Re-route swapped days (only if boundary swap changed plans) ──
     # Compare original POI IDs: if any day's POI set changed, re-route it.
