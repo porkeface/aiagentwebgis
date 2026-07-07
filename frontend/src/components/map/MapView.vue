@@ -351,6 +351,7 @@ function onTimelineClick(): void {
     mapStore.timelineOpen = false
   } else {
     activePanel.value = null
+    mapStore.setPoiPanelOpen(false)
     mapStore.timelineOpen = true
   }
 }

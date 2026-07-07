@@ -218,7 +218,7 @@ function formatReviews(n: number | undefined | null): string {
   transition: all var(--duration-fast) var(--ease-out-expo);
 }
 .poi-select-panel__close:hover {
-  background: var(--color-bg-subtle);
+  background: var(--color-bg-muted);
   color: var(--color-text-primary);
 }
 
@@ -252,13 +252,13 @@ function formatReviews(n: number | undefined | null): string {
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-out-expo);
   border-radius: var(--radius-md);
-  background: var(--color-bg-subtle);
+  background: var(--color-bg-elevated);
 }
 .poi-card:hover {
-  background: var(--color-bg-subtle);
+  background: var(--color-bg-overlay);
 }
 .poi-card.is-selected {
-  background: var(--color-accent-subtle, rgba(232, 99, 60, 0.06));
+  background: var(--color-accent-soft);
 }
 
 .poi-card__check {
@@ -315,7 +315,8 @@ function formatReviews(n: number | undefined | null): string {
 .poi-card__category {
   padding: 1px var(--space-sm);
   border-radius: var(--radius-xs);
-  background: var(--color-bg-subtle);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
   font-size: 0.625rem;
   font-weight: 500;
 }

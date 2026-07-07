@@ -76,23 +76,23 @@ export let DAY_COLORS: readonly string[] = []
 
 const POI_ICONS = {
   sightseeing:
-    '<svg viewBox="0 0 24 24" width="10" height="10" fill="white">' +
+    '<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">' +
     '<path d="M12 2L4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6l-8-4zm0 4.5l5 2.5v3c0 3.5-2.5 7-5 7.7-2.5-.7-5-4.2-5-7.7v-3l5-2.5z"/>' +
     "</svg>",
   food:
-    '<svg viewBox="0 0 24 24" width="10" height="10" fill="white">' +
+    '<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">' +
     '<path d="M11 9H9V2H7v7H5V2H3v7c0 2.1 1.7 3.8 3.8 3.9L8 21h2l1.2-8.1C12.7 12.8 14 11.1 14 9V2h-2v7h-1V2zm7-7v9c0 2.5-2 4.5-4.5 4.5V21h-2v-8.5C13 12.5 15 10.5 15 8V2h3z"/>' +
     "</svg>",
   drinks:
-    '<svg viewBox="0 0 24 24" width="10" height="10" fill="white">' +
+    '<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">' +
     '<path d="M20 3H4v10c0 2.2 1.8 4 4 4h8c2.2 0 4-1.8 4-4V5c0-1.1-.9-2-2-2zm0 12H4V5h16v10zm-2 5H6v-2h12v2z"/>' +
     "</svg>",
   shopping:
-    '<svg viewBox="0 0 24 24" width="10" height="10" fill="white">' +
+    '<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">' +
     '<path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.6-1.4 2.5c-.2.4-.2.9.1 1.2.3.4.7.7 1.2.7h12v-2H7.4c-.1 0-.2-.1-.2-.2v-.1L8.1 13h7.4c.7 0 1.4-.4 1.7-1l3.6-6.5c.1-.2.2-.4.2-.6 0-.6-.4-1-1-1H5.2L4.3 1H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/>' +
     "</svg>",
   accommodation:
-    '<svg viewBox="0 0 24 24" width="12" height="12" fill="white">' +
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">' +
     '<path d="M20 10V7c0-1.1-.9-2-2-2h-3V3H9v2H6c-1.1 0-2 .9-2 2v3c-1.7 0-3 1.3-3 3v6h2v-3h18v3h2v-6c0-1.7-1.3-3-3-3zM6 7h12v3H6V7zm-3 9c0-.5.5-1 1-1h16c.5 0 1 .5 1 1v1H3v-1z"/>' +
     "</svg>",
 }

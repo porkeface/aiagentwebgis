@@ -77,7 +77,9 @@ function onSelectPOI(poi: RoutePOI, day: number): void {
         lng: poi.lng,
         lat: poi.lat,
         rating: poi.rating ?? null,
-        review_count: null,
+        review_count: (poi.review_count as number) ?? null,
+        photo: (poi.photo as string) ?? null,
+        description: (poi.description as string) ?? null,
         tags: poi.tags ?? [],
     });
 }
@@ -275,7 +277,8 @@ function formatTimeSlot(slot: string | undefined): string {
                                     {{ formatTimeSlot(poi.time_slot) }}
                                 </span>
                                 <span v-if="poi.category" class="itin__chip itin__chip--category">
-                                    {{ categoryIcon(poi.category) }} {{ cleanCategory(poi.category) }}
+                                    <span class="itin__chip-icon" v-html="categoryIcon(poi.category)" />
+                                    {{ cleanCategory(poi.category) }}
                                 </span>
                                 <span
                                     v-if="poi.rating != null"
@@ -742,6 +745,25 @@ function formatTimeSlot(slot: string | undefined): string {
     text-transform: none;
     letter-spacing: normal;
     font-size: var(--text-xs);
+}
+
+.itin__chip-icon {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: -2px;
+    margin-right: 4px;
+}
+
+.itin__chip-icon :deep(svg) {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
+
+.itin__chip-icon > svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
 }
 
 /* ── Inline segregated mode switcher (replaces single .itin__chip--mode) ── */
