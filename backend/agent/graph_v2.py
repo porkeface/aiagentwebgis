@@ -374,6 +374,15 @@ async def planning_pipeline_node(
         writer({"type": "error", "data": {"message": f"未能搜索到{city}的POI数据"}})
         return {"messages": [AIMessage(content=f"抱歉，未能搜索到{city}的旅游信息，请换一个城市试试。")]}
 
+    # ── Semantic dedup: remove same-place-different-name duplicates ──
+    from agent.tools.poi_dedup import deduplicate_pois
+
+    before_dedup = len(all_pois)
+    all_pois = deduplicate_pois(all_pois)
+    if before_dedup != len(all_pois):
+        logger.info("Dedup removed %d duplicate POIs (%d → %d)",
+                    before_dedup - len(all_pois), before_dedup, len(all_pois))
+
     writer({
         "type": "candidates_ready",
         "data": {"pois": all_pois, "count": len(all_pois)},
@@ -539,6 +548,68 @@ async def planning_pipeline_node(
                 key=lambda i: _euclidean_sq_for_poi(donor_pois[i], clat, clng),
             )
             c["pois"].append(donor_pois.pop(best))
+
+    # ── Even-distribution pass: move excess POIs from overloaded days ──
+    # to under-filled ones.  Target is ceil(total / n_days); any cluster
+    # with > target + 1 POIs donates its farthest POI to a cluster that is
+    # below target.  This prevents "Day 1 has 7 POIs, Day 4 has 3" lopsidedness.
+    total_pois = sum(len(c.get("pois", [])) for c in clusters)
+    target = -(-total_pois // len(clusters)) if clusters else 3  # ceil division
+    for _pass in range(3):  # at most 3 redistribution rounds
+        changed = False
+        for c in clusters:
+            while len(c.get("pois", [])) > target + 1:
+                # Find the most under-filled cluster
+                receiver = min(
+                    (oc for oc in clusters if oc is not c),
+                    key=lambda oc: len(oc.get("pois", [])),
+                )
+                if len(receiver.get("pois", [])) >= target:
+                    break  # everyone is at or above target
+                donor_pois = c["pois"]
+                recv_pois = receiver["pois"]
+                if not recv_pois:
+                    receiver["pois"] = [donor_pois.pop()]
+                    changed = True
+                    continue
+                clat = sum(p.get("lat", 0) for p in recv_pois) / len(recv_pois)
+                clng = sum(p.get("lng", 0) for p in recv_pois) / len(recv_pois)
+                best = min(
+                    range(len(donor_pois)),
+                    key=lambda i: _euclidean_sq_for_poi(donor_pois[i], clat, clng),
+                )
+                receiver["pois"].append(donor_pois.pop(best))
+                changed = True
+        if not changed:
+            break
+
+    # ── Nearby-POI backfill: pull in high-score POIs that didn't make the ──
+    # top_n cut but are very close to an under-filled day's cluster.  This
+    # catches "route passes right by this great spot but didn't include it."
+    if len(scored) > top_n:
+        leftover = scored[top_n:]
+        for c in clusters:
+            c_pois = c.get("pois", [])
+            if len(c_pois) >= max_per_day:
+                continue
+            if not c_pois:
+                continue
+            clat = sum(p.get("lat", 0) for p in c_pois) / len(c_pois)
+            clng = sum(p.get("lng", 0) for p in c_pois) / len(c_pois)
+            # Find the nearest leftover POI within 3km of the cluster centroid
+            best_idx, best_dist = -1, float("inf")
+            for i, p in enumerate(leftover):
+                if not isinstance(p.get("lng"), (int, float)):
+                    continue
+                if not isinstance(p.get("lat"), (int, float)):
+                    continue
+                d = _euclidean_sq_for_poi(p, clat, clng)
+                if d < best_dist:
+                    best_dist = d
+                    best_idx = i
+            # ~3km in lat/lng squared ≈ 0.0009 (rough)
+            if best_idx >= 0 and best_dist < 0.0009:
+                c_pois.append(dict(leftover.pop(best_idx)))
 
     # ── Step 4: Route each day IN PARALLEL (semaphore=3 for Amap QPS limit) ──
     from agent.tools.submit_plan import route_one_day

@@ -53,27 +53,30 @@ class TestEstimateVisitDuration:
         assert d == int(120 * 0.85)  # 102
 
     def test_high_rating_boost(self):
+        # rating=4.5 → multiplier = 1.0 + 0.5*0.16 = 1.08
         base = estimate_visit_duration(category="博物馆", rating=4.5)
-        assert base == int(120 * 1.1)  # 132
+        assert base == int(120 * 1.08)  # 129
 
     def test_low_rating_no_boost(self):
         d = estimate_visit_duration(category="博物馆", rating=4.0)
         assert d == 120
 
     def test_high_review_count_boost(self):
+        # review_count=2000 → multiplier = 1.0 + min(2000/10000, 0.1) = 1.1
         base = estimate_visit_duration(category="博物馆", review_count=2000)
-        assert base == int(120 * 1.1)
+        assert base == int(120 * 1.1)  # 132
 
     def test_low_review_count_no_boost(self):
+        # review_count=500 → 1.0 + 500/10000 = 1.05
         d = estimate_visit_duration(category="博物馆", review_count=500)
-        assert d == 120
+        assert d == int(120 * 1.05)  # 126
 
     def test_combined_boosts(self):
-        # 博物馆=120, 5A=1.3, rating>=4.5=1.1, review_count>1000=1.1
+        # 博物馆=120, 5A=1.3, rating=4.6→1.096, review_count=2000→1.1 (=1+min(2000/10000,0.1))
         d = estimate_visit_duration(
             category="博物馆", importance="5A", rating=4.6, review_count=2000
         )
-        assert d == int(120 * 1.3 * 1.1 * 1.1)
+        assert d == int(120 * 1.3 * 1.096 * 1.1)  # 188
 
     def test_clamps_minimum(self):
         d = estimate_visit_duration(category="火车站", importance="A")
@@ -81,11 +84,12 @@ class TestEstimateVisitDuration:
         assert d == 15
 
     def test_clamps_maximum(self):
-        # 游乐园=180, 5A=1.3, rating=4.5=1.1, review=2000=1.1 → ~283 → under 360
+        # 游乐园=180, 5A=1.3, rating=4.8→1.128, review=5000→1.1
         d = estimate_visit_duration(
             category="游乐园", importance="5A", rating=4.8, review_count=5000
         )
-        assert d == int(180 * 1.3 * 1.1 * 1.1)  # ~283
+        # 180 * 1.3 * 1.128 * 1.1 = 290 (under 360, no clamp)
+        assert d == 290
 
     def test_empty_string_category(self):
         d = estimate_visit_duration(category="")
@@ -142,7 +146,8 @@ class TestEstimatePoiDurationFromDict:
     def test_basic_poi(self):
         poi = {"category": "博物馆", "rating": 4.5, "review_count": 500}
         d = estimate_poi_duration_from_dict(poi)
-        assert d == int(120 * 1.1)  # only rating boost
+        # rating=4.5 → 1.08x, reviews=500 → 1.05x
+        assert d == int(120 * 1.08 * 1.05)  # 136
 
     def test_amap_poi_with_type_field(self):
         # 风景名胜 base is now 120 (was 180)
@@ -157,6 +162,7 @@ class TestEstimatePoiDurationFromDict:
 
     def test_poi_with_opentime_cost_tags(self):
         # 公园 base is now 60 (was 90)
+        # rating=4.2 → 1.032, 4A=1.15
         poi = {
             "category": "公园",
             "rating": 4.2,
@@ -167,7 +173,7 @@ class TestEstimatePoiDurationFromDict:
             "business_area": "朝阳区",
         }
         d = estimate_poi_duration_from_dict(poi)
-        assert d == int(60 * 1.15)  # 69
+        assert d == int(60 * 1.15 * 1.032)  # 71
 
 
 class TestCategoryDurationMap:

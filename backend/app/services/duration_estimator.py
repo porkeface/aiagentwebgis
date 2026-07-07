@@ -112,14 +112,18 @@ def estimate_visit_duration(
     base = CATEGORY_DURATION_MAP.get("default", 90)
 
     if category:
-        # Try exact match first, then check if any key is a substring
+        # Try exact match first, then pick the longest matching key
+        # (most specific). Amap multi-level strings like
+        # "风景名胜;风景名胜;寺庙道观" should match "寺庙道观" (60 min)
+        # not just "风景名胜" (120 min).
         if category in CATEGORY_DURATION_MAP:
             base = CATEGORY_DURATION_MAP[category]
         else:
+            best_key = ""
             for key, dur in CATEGORY_DURATION_MAP.items():
-                if key in category:
+                if key in category and len(key) > len(best_key):
+                    best_key = key
                     base = dur
-                    break
 
     multiplier = 1.0
 
@@ -131,13 +135,14 @@ def estimate_visit_duration(
                 multiplier = mult
                 break
 
-    # Rating boost: very high-rated spots get +10%
-    if rating is not None and rating >= 4.5:
-        multiplier *= 1.1
+    # Rating boost: continuous scale for diversity
+    # 4.0 → 1.0x, 4.5 → 1.08x, 5.0 → 1.16x
+    if rating is not None and rating >= 4.0:
+        multiplier *= 1.0 + (rating - 4.0) * 0.16
 
-    # Popularity boost: very popular spots (>1000 reviews) get +10%
-    if review_count is not None and review_count > 1000:
-        multiplier *= 1.1
+    # Popularity boost: continuous scale, capped at +10%
+    if review_count is not None and review_count > 0:
+        multiplier *= 1.0 + min(review_count / 10000, 0.1)
 
     # Cap at reasonable bounds
     estimated = int(base * multiplier)
