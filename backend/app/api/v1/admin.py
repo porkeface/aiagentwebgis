@@ -102,9 +102,9 @@ async def patch_user(
     db: AsyncSession = Depends(get_session),
     user_id: int = Depends(require_admin),
 ) -> dict:
-    """Toggle admin status or reset password for a user. Cannot modify self."""
-    if target_id == user_id:
-        raise HTTPException(status_code=400, detail="Cannot modify your own admin account")
+    """Toggle admin status or reset password for a user. Cannot modify own admin flag."""
+    if target_id == user_id and body.is_admin is not None:
+        raise HTTPException(status_code=400, detail="Cannot modify your own admin status")
 
     result = await db.execute(select(User).where(User.id == target_id))
     user = result.scalar_one_or_none()

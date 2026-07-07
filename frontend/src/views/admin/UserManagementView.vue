@@ -4,7 +4,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAdminStore } from '@/stores/admin'
 
 const store = useAdminStore()
-const newPassword = ref('')
+const passwordMap = ref<Record<number, string>>({})
+
+function getPassword(id: number): string {
+  return passwordMap.value[id] ?? ''
+}
+
+function setPassword(id: number, value: string): void {
+  passwordMap.value = { ...passwordMap.value, [id]: value }
+}
 
 onMounted(() => store.fetchUsers())
 
@@ -14,12 +22,14 @@ async function toggleAdmin(id: number, current: boolean): Promise<void> {
 }
 
 async function resetPassword(id: number): Promise<void> {
-  if (!newPassword.value || newPassword.value.length < 4) {
+  const pw = passwordMap.value[id] ?? ''
+  if (!pw || pw.length < 4) {
     ElMessage.warning('密码至少 4 位')
     return
   }
-  await store.updateUser(id, { password: newPassword.value })
-  newPassword.value = ''
+  await store.updateUser(id, { password: pw })
+  delete passwordMap.value[id]
+  passwordMap.value = { ...passwordMap.value }
   ElMessage.success('密码已重置')
 }
 
@@ -50,7 +60,14 @@ async function remove(id: number, username: string): Promise<void> {
           <button class="admin-btn admin-btn--small" @click="toggleAdmin(u.id, u.is_admin)">
             {{ u.is_admin ? '降权' : '升权' }}
           </button>
-          <input v-model="newPassword" class="admin-table__pw" placeholder="新密码" style="width:80px" />
+          <input
+            :value="getPassword(u.id)"
+            type="password"
+            class="admin-table__pw"
+            placeholder="新密码"
+            style="width:80px"
+            @input="setPassword(u.id, ($event.target as HTMLInputElement).value)"
+          />
           <button class="admin-btn admin-btn--small" @click="resetPassword(u.id)">重置</button>
           <button class="admin-btn admin-btn--small admin-btn--danger" @click="remove(u.id, u.username)">删除</button>
         </span>
