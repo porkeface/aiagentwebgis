@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAdminStore } from '@/stores/admin'
 
@@ -27,22 +27,27 @@ const deepseekModels = [
 ]
 
 function defaultBaseUrl(): string {
-  if (provider.value === 'deepseek') return 'https://api.deepseek.com'
+  if (provider.value === 'deepseek') return 'https://api.deepseek.com/v1'
   return 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 }
 
-watch(provider, () => {
-  model.value = ''
+function defaultModel(): string {
+  if (provider.value === 'deepseek') return 'deepseek-v4-flash'
+  return 'qwen3.7-plus'
+}
+
+function onProviderChange(): void {
   baseUrl.value = defaultBaseUrl()
-})
+  model.value = defaultModel()
+}
 
 async function load(): Promise<void> {
   await store.fetchConfig()
   if (store.config) {
     provider.value = store.config.LLM_PROVIDER?.value || 'dashscope'
-    model.value = store.config.LLM_MODEL?.value || 'qwen-plus'
+    model.value = store.config.LLM_MODEL?.value || defaultModel()
     baseUrl.value = store.config.LLM_BASE_URL?.value || defaultBaseUrl()
-    apiKey.value = store.config.DASHSCOPE_API_KEY?.value || ''
+    apiKey.value = store.config.LLM_API_KEY?.value || ''
   }
 }
 
@@ -53,7 +58,7 @@ async function save(): Promise<void> {
     LLM_BASE_URL: baseUrl.value,
   }
   if (apiKey.value && !apiKey.value.startsWith('****')) {
-    updates.DASHSCOPE_API_KEY = apiKey.value
+    updates.LLM_API_KEY = apiKey.value
   }
   try {
     const result = await store.saveConfig(updates)
@@ -77,7 +82,7 @@ onMounted(load)
     <div class="admin-form" v-if="store.config">
       <label class="admin-form__field">
         <span class="admin-form__label">供应商</span>
-        <select v-model="provider" class="admin-form__select">
+        <select v-model="provider" class="admin-form__select" @change="onProviderChange">
           <option
             v-for="p in providerOptions"
             :key="p.value"

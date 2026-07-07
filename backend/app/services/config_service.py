@@ -18,7 +18,7 @@ _ENV_PATH = _PROJECT_ROOT / ".env"
 
 # Keys whose values should be masked when exposed to the API.
 _SECRET_KEYS = {
-    "DASHSCOPE_API_KEY", "ONEAPI_API_KEY", "AMAP_API_KEY",
+    "LLM_API_KEY", "ONEAPI_API_KEY", "AMAP_API_KEY",
     "JWT_SECRET_KEY", "DB_PASSWORD", "VITE_AMAP_KEY",
 }
 
@@ -33,6 +33,7 @@ _RESTART_KEYS = {
 # prevents an attacker (or a fat-fingered admin) from rotating the JWT secret
 # out from under a live deployment or pointing the DB URL at a hostile host.
 _ALLOWED_UPDATE_KEYS: frozenset[str] = frozenset({
+    "LLM_API_KEY",
     "LLM_PROVIDER",
     "LLM_MODEL",
     "LLM_BASE_URL",

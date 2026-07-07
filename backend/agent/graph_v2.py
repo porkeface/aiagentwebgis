@@ -105,7 +105,7 @@ def _get_model() -> ChatOpenAI:
     return ChatOpenAI(
         model=settings.llm_model,
         base_url=settings.llm_base_url,
-        api_key=settings.dashscope_api_key,
+        api_key=settings.llm_api_key,
         temperature=0.0,
         streaming=True,
         timeout=60,
@@ -118,7 +118,7 @@ def _get_model_no_tools() -> ChatOpenAI:
     return ChatOpenAI(
         model=settings.llm_model,
         base_url=settings.llm_base_url,
-        api_key=settings.dashscope_api_key,
+        api_key=settings.llm_api_key,
         temperature=0.0,
         streaming=True,
         timeout=30,
