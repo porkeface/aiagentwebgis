@@ -58,28 +58,19 @@ function _poiMarkerContent(poi) {
   return _buildMarker(icon, color)
 }
 
-function buildStopContent(color, num, position, poi) {
-  const icon = categoryIcon(poi?.category)
-  const cat = categoryColor(poi?.category)
+/** Original style: solid day-coloured circle with white number,
+ *  ringed in the same day colour to distinguish from search-result POIs. */
+function buildStopContent(color, num, position) {
+  const size = position === 'start' || position === 'end' ? 30 : 26
   return `<div class="poi-marker stop" style="
-    width:26px;height:26px;
-    background:#fff;
-    border:2px solid ${color};
+    width:${size}px;height:${size}px;
+    background:${color};
+    border:2px solid #fff;
     border-radius:50%;
     display:flex;align-items:center;justify-content:center;
-    box-shadow:0 1px 4px rgba(0,0,0,0.4);
-    position:relative;
-  ">
-    <span style="display:flex;align-items:center;justify-content:center;line-height:0;">${icon}</span>
-    <span style="
-      position:absolute;bottom:-2px;right:-2px;
-      width:14px;height:14px;
-      background:${cat};border-radius:50%;
-      color:#fff;font-size:9px;font-weight:700;
-      display:flex;align-items:center;justify-content:center;
-      border:1.5px solid #fff;
-    ">${num}</span>
-  </div>`
+    color:#fff;font-size:11px;font-weight:700;
+    box-shadow:0 0 0 3px ${color}40, 0 1px 4px rgba(0,0,0,0.3);
+  ">${num}</div>`
 }
 
 /** Two-point straight line between adjacent POIs, used when a segment
@@ -338,12 +329,13 @@ export class RouteLayerRenderer {
         else if (i === count - 1) position = 'end'
 
         const zIndex = position === 'start' ? 500 : (position === 'end' ? 400 : 300)
-        const content = buildStopContent(color, i + 1, position, poi)
+        const content = buildStopContent(color, i + 1, position)
 
         const marker = new this._AMap.Marker({
           position: [poi.lng, poi.lat],
           content,
-          offset: new this._AMap.Pixel(-13, -13),
+          offset: new this._AMap.Pixel(-15, -15),
+          zIndex,
           zIndex,
         })
         if (clickFn) {

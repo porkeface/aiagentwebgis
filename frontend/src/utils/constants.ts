@@ -1,10 +1,71 @@
 /**
- * Day-route color palette.
- *
- * Mirrors CSS variables --color-day-1 .. --color-day-4 in style.css.
- * Use this array when colors are needed in JS (e.g. inline styles for markers).
+ * Day-route color palette — built from a base set of 16 hues, then filtered
+ * to drop any colour whose hue is too close to a category colour.  The base
+ * set is hand-picked to live in the warm/cool gaps the category palette
+ * doesn't touch, so we keep most of the 16 even after filtering.
  */
-export const DAY_COLORS = ['#1890ff', '#52c41a', '#fa8c16', '#a855f7'] as const
+const DAY_COLOR_PALETTE: string[] = [
+  '#f43f5e',  // rose       (warm red-pink)
+  '#0ea5e9',  // sky        (cyan-blue)
+  '#84cc16',  // lime       (yellow-green)
+  '#f59e0b',  // amber      (yellow-orange)
+  '#a855f7',  // purple
+  '#14b8a6',  // teal       (cyan-green)
+  '#ec4899',  // pink       (magenta)
+  '#facc15',  // yellow
+  '#6366f1',  // indigo     (blue-violet)
+  '#22c55e',  // green
+  '#fb923c',  // orange
+  '#06b6d4',  // cyan
+  '#d946ef',  // fuchsia
+  '#fb7185',  // coral
+  '#a3a3a3',  // neutral grey (fallback)
+  '#dc2626',  // brick red
+]
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '')
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ]
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255; g /= 255; b /= 255
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  let h = 0, s = 0
+  if (max !== min) {
+    const d = max - min
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)); break
+      case g: h = ((b - r) / d + 2); break
+      case b: h = ((r - g) / d + 4); break
+    }
+    h /= 6
+  }
+  return [h, s, l]
+}
+
+/** Reject palette colours whose hue is within 15° of a category hue.
+ *  Threshold is tight — only ever blocks near-identical hues, so most of
+ *  the 16-colour base palette survives even with the 5 POI hues filling
+ *  large swaths of the colour wheel. */
+function isTooClose(hexA: string, rgbB: [number, number, number]): boolean {
+  const [ar, ag, ab] = hexToRgb(hexA)
+  const [ha] = rgbToHsl(ar, ag, ab)
+  const [hb] = rgbToHsl(rgbB[0], rgbB[1], rgbB[2])
+  if (ha === 0 || hb === 0) return false
+  const diff = Math.min(Math.abs(ha - hb), 1 - Math.abs(ha - hb)) * 360
+  return diff < 15
+}
+
+/** The day-colour palette (category colours excluded). Lazily initialised
+ *  after POI_GROUPS is defined below — see end of file. */
+export let DAY_COLORS: readonly string[] = []
 
 // ── 5 大类 POI ─────────────────────────────────────────────────────────────
 
@@ -45,7 +106,7 @@ export const POI_GROUPS = {
   sightseeing: {
     icon: POI_ICONS.sightseeing,
     label: "景点",
-    color: "#52c41a",
+    color: "#0891b2",
     keywords: [
       "风景名胜", "国家级景点", "世界遗产", "博物馆", "展览馆", "美术馆",
       "科技馆", "寺庙道观", "教堂", "纪念馆", "公园", "城市广场",
@@ -63,7 +124,7 @@ export const POI_GROUPS = {
   food: {
     icon: POI_ICONS.food,
     label: "美食",
-    color: "#ff6b35",
+    color: "#e11d48",
     keywords: [
       "餐饮服务", "中餐厅", "外国餐厅", "特色餐厅", "美食街", "夜市", "小吃",
       "火锅", "海鲜", "日料", "韩料", "西餐", "农家菜", "面包甜点",
@@ -77,7 +138,7 @@ export const POI_GROUPS = {
   drinks: {
     icon: POI_ICONS.drinks,
     label: "饮品",
-    color: "#a87245",
+    color: "#475569",
     keywords: [
       "咖啡厅", "咖啡", "咖啡馆", "茶馆", "茶社", "茶艺馆", "茶室",
       "酒吧", "酒馆", "清吧", "精酿", "奶茶店", "奶茶",
@@ -88,7 +149,7 @@ export const POI_GROUPS = {
   shopping: {
     icon: POI_ICONS.shopping,
     label: "购物",
-    color: "#2d8cf0",
+    color: "#059669",
     keywords: [
       "购物服务", "购物中心", "商业步行街", "百货商场", "百货", "超市",
       "市场", "免税店", "奥莱", "奥特莱斯", "文创店", "纪念品",
@@ -100,7 +161,7 @@ export const POI_GROUPS = {
   accommodation: {
     icon: POI_ICONS.accommodation,
     label: "住宿",
-    color: "#7951aa",
+    color: "#7c3aed",
     keywords: [
       "住宿服务", "酒店", "宾馆", "四星级宾馆", "五星级宾馆", "民宿",
       "青旅", "青年旅舍", "客栈", "度假村", "招待所", "旅馆",
@@ -141,4 +202,10 @@ export function categoryIcon(cat: string | undefined): string {
 /** Brand colour for a POI category — used for the circular marker background. */
 export function categoryColor(cat: string | undefined): string {
   return POI_GROUPS[classifyPOI(cat)].color
+}
+
+// Initialise the day palette now that POI_GROUPS is fully defined.
+{
+  const POI_RGB = Object.values(POI_GROUPS).map((g) => g.color).map(hexToRgb)
+  DAY_COLORS = DAY_COLOR_PALETTE.filter((c) => !POI_RGB.some((p) => isTooClose(c, p)))
 }
