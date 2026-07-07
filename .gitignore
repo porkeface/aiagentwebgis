@@ -39,7 +39,7 @@ npm-debug.log*
 .coverage
 htmlcov/
 
-# Dev artifacts — screenshots, debug logs, playwright MCP cache
+# Dev artifacts — screenshots, debug logs, playwright MCP cache, temp files
 /playwright-mcp/
 /.playwright-mcp/
 /screenshot.png
@@ -48,8 +48,12 @@ htmlcov/
 /backend/null
 /backend/uvicorn-*.log
 backend/uvicorn*.log
+/backend/.pid
+/backend/data.db
 .vite/
-
+*.png
+!src/assets/*.png
+frontend/D\357\200\272Tempsse_debug.txt
 # Untracked historical files (not part of this audit's scope)
 /backend/app/services/distance_cache.py
 /backend/app/services/redis_client.py

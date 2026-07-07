@@ -47,6 +47,7 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: "", redirect: "/admin/models" },
       { path: "models", component: () => import("@/views/admin/ModelConfigView.vue") },
+      { path: "amap", component: () => import("@/views/admin/AmapConfigView.vue") },
       { path: "users", component: () => import("@/views/admin/UserManagementView.vue") },
       { path: "data", component: () => import("@/views/admin/DataManagementView.vue") },
       { path: "database", component: () => import("@/views/admin/DatabaseConfigView.vue") },

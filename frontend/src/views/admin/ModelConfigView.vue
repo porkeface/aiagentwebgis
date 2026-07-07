@@ -9,8 +9,6 @@ const provider = ref('')
 const model = ref('')
 const baseUrl = ref('')
 const apiKey = ref('')
-const amapApiKey = ref('')
-const viteAmapKey = ref('')
 
 const providerOptions = [
   { label: 'DashScope (阿里云百炼)', value: 'dashscope' },
@@ -50,8 +48,6 @@ async function load(): Promise<void> {
     model.value = store.config.LLM_MODEL?.value || defaultModel()
     baseUrl.value = store.config.LLM_BASE_URL?.value || defaultBaseUrl()
     apiKey.value = store.config.LLM_API_KEY?.value || ''
-    amapApiKey.value = store.config.AMAP_API_KEY?.value || ''
-    viteAmapKey.value = store.config.VITE_AMAP_KEY?.value || ''
   }
 }
 
@@ -63,12 +59,6 @@ async function save(): Promise<void> {
   }
   if (apiKey.value && !apiKey.value.startsWith('****')) {
     updates.LLM_API_KEY = apiKey.value
-  }
-  if (amapApiKey.value && !amapApiKey.value.startsWith('****')) {
-    updates.AMAP_API_KEY = amapApiKey.value
-  }
-  if (viteAmapKey.value && !viteAmapKey.value.startsWith('****')) {
-    updates.VITE_AMAP_KEY = viteAmapKey.value
   }
   try {
     const result = await store.saveConfig(updates)
@@ -126,15 +116,6 @@ onMounted(load)
       <label class="admin-form__field">
         <span class="admin-form__label">API Key</span>
         <input v-model="apiKey" class="admin-form__input" type="password" placeholder="sk-xxxx" />
-      </label>
-
-      <label class="admin-form__field">
-        <span class="admin-form__label">高德地图 API Key（后端）</span>
-        <input v-model="amapApiKey" class="admin-form__input" type="password" placeholder="AMAP_API_KEY" />
-      </label>
-      <label class="admin-form__field">
-        <span class="admin-form__label">高德地图 API Key（前端 VITE_）</span>
-        <input v-model="viteAmapKey" class="admin-form__input" type="password" placeholder="VITE_AMAP_KEY" />
       </label>
 
       <button class="admin-btn admin-btn--primary" @click="save">保存配置</button>
