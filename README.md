@@ -1,174 +1,260 @@
-# AI Travel Planner 🗺️
+# AI Travel Planner
 
-AI-powered travel planning system. Plan trips through natural conversation with an AI assistant, get personalized POI recommendations, and visualize your itinerary on an interactive map.
+基于 AI Agent 的旅游路线智能规划与景点空间推荐系统。用户以自然语言描述旅行需求，系统自动完成 POI 搜索、空间分天、路线优化，并在高德地图上可视化展示。
 
-## ✨ Features
+## 特性
 
-- **AI Conversation Planning**: Chat with AI to plan multi-day trips with natural language
-- **Smart POI Search**: Spatial filtering, multi-factor scoring, and diversity-aware recommendations
-- **Interactive Map**: Leaflet-based map with real-time POI markers and route visualization
-- **Trip Management**: Create, view, edit, and delete trips with daily timeline
-- **Dialog-Map Linkage**: Click POI in chat → zoom on map; click map marker → highlight in chat
-- **Multi-turn Context**: AI remembers conversation history for progressive refinement
-- **JWT Authentication**: Secure user registration and login
+- **AI 对话规划**：自然语言描述需求，AI 自动生成多日行程方案
+- **确定性规划流水线**：十步流水线（搜索→评分→分区→路径→验证），结果可复现
+- **高德地图可视化**：POI 标注、每日路线绘制、按类别着色区分
+- **SSE 流式推送**：20种事件类型实时反馈 Agent 推理进度
+- **多 LLM 支持**：DashScope（通义千问）/ DeepSeek，管理后台一键切换
+- **配置热重载**：LLM Key/模型/高德 Key 修改后立即生效，无需重启
+- **管理后台**：模型配置、高德 Key 管理、用户管理、数据统计
+- **地图选点规划**：在首页地图上预选 POI，一键发起智能规划
 
-## 🛠️ Tech Stack
+## 技术栈
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Vue 3 + TypeScript + Vite + Element Plus + Leaflet |
-| Backend | FastAPI + SQLAlchemy (async) + LangGraph |
-| Database | PostgreSQL 16 + PostGIS 3.4 |
-| Cache | Redis 7 |
-| AI/LLM | DashScope (Qwen) |
-| Map | Amap (Gaode) API |
-| Containerization | Docker + Docker Compose |
+| 层 | 技术 |
+|---|------|
+| 前端 | Vue 3 + TypeScript + Vite + Element Plus + 高德 JS API 2.0 |
+| 后端 | FastAPI + SQLAlchemy 2.0 + GeoAlchemy2 |
+| Agent | LangGraph StateGraph + ChatOpenAI（OpenAI 兼容接口） |
+| 数据库 | PostgreSQL 15+ + PostGIS 3.3+ |
+| 地图 | 高德地图 Web 服务 API + JS API |
+| LLM | 通义千问（DashScope）/ DeepSeek |
+| 状态管理 | Pinia |
+| 包管理 | uv（Python）/ npm（Node） |
 
-## 📁 Project Structure
+## 项目结构
 
-```text
+```
 aiagentwebgis/
 ├── backend/
+│   ├── agent/                  # LangGraph Agent
+│   │   ├── graph_v2.py         # StateGraph 编排（5节点）
+│   │   ├── state.py            # AgentState 定义
+│   │   ├── tools/              # 7个 Agent 工具
+│   │   ├── prompts/            # System Prompt
+│   │   └── checkpointer.py     # LangGraph 状态持久化
 │   ├── app/
-│   │   ├── api/v1/          # API routers (auth, poi, trip, agent)
-│   │   ├── models/          # SQLAlchemy models
-│   │   ├── schemas/         # Pydantic schemas
-│   │   ├── services/        # Business logic
-│   │   ├── main.py          # FastAPI app factory
-│   │   ├── config.py        # Settings (env-based)
-│   │   └── database.py      # DB session management
-│   ├── agent/               # LangGraph agent graph
-│   ├── tests/               # pytest tests
-│   └── Dockerfile
+│   │   ├── api/v1/             # API 路由（auth/agent/poi/trip/admin/chat）
+│   │   ├── models/             # 6张数据表 SQLAlchemy 模型
+│   │   ├── schemas/            # Pydantic 请求/响应模型
+│   │   ├── services/           # 业务逻辑（amap/auth/config/chat）
+│   │   ├── main.py             # FastAPI 应用工厂 + 速率限制中间件
+│   │   ├── config.py           # Pydantic Settings（环境变量驱动）
+│   │   └── database.py         # 异步数据库会话管理
+│   ├── tests/                  # pytest 测试
+│   └── pyproject.toml
 ├── frontend/
 │   ├── src/
-│   │   ├── api/             # API client modules
-│   │   ├── components/      # Vue components (map, chat, trip)
-│   │   ├── stores/          # Pinia stores
-│   │   ├── views/           # Page views
-│   │   └── types/           # TypeScript types
-│   └── Dockerfile
+│   │   ├── api/                # API 客户端（agent/admin/auth/trips）
+│   │   ├── components/map/     # 地图组件（MapView/RouteLayer/POIDetailCard 等）
+│   │   ├── stores/             # Pinia Stores（chat/map/admin）
+│   │   ├── views/              # 页面（首页/行程详情/管理后台）
+│   │   ├── types/              # TypeScript 类型定义
+│   │   └── utils/              # 工具函数（常量/格式化/高德加载）
+│   └── package.json
 ├── docs/
-│   ├── user-manual.md       # User guide
-│   └── demo-script.md       # Demo test cases
-├── docker-compose.yml
-├── .env.example
-└── README.md
+│   ├── reports/                # 五份设计报告
+│   │   ├── 01-可行性研究报告.md
+│   │   ├── 02-需求分析报告.md
+│   │   ├── 03-概要设计报告.md
+│   │   ├── 04-详细设计报告.md
+│   │   └── 05-数据库设计报告.md
+│   ├── user-manual.md          # 用户手册
+│   └── demo-script.md          # 演示测试脚本
+├── .env.example                # 环境变量模板
+└── .gitignore
 ```
 
-## 🚀 Quick Start
+## 快速开始
 
-### Prerequisites
+### 前提条件
 
-- Docker & Docker Compose
-- [Amap API Key](https://lbs.amap.com/)
-- [DashScope API Key](https://dashscope.console.aliyun.com/)
+- **Python 3.11+** + **uv**（Python 包管理器）
+- **Node.js 18+** + **npm**
+- **PostgreSQL 15+** with **PostGIS 3.3+**
+- [高德地图 API Key](https://lbs.amap.com/)（Web服务 + JS API 各一个）
+- LLM API Key（[DashScope](https://dashscope.console.aliyun.com/) 或 [DeepSeek](https://platform.deepseek.com/)）
 
-### 1. Clone and Configure
+### 1. 配置数据库
+
+在 PostgreSQL 中创建用户和数据库，并启用 PostGIS 扩展：
+
+```sql
+CREATE USER travel_planner WITH PASSWORD 'your_password';
+CREATE DATABASE travel_planner OWNER travel_planner;
+\c travel_planner
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
+### 2. 配置环境变量
 
 ```bash
-git clone <repo-url>
-cd aiagentwebgis
 cp .env.example .env
 ```
 
-Edit `.env` with your keys:
+编辑 `.env`，填入你的 Key：
 
 ```env
-DB_PASSWORD=your_secure_password
-AMAP_API_KEY=your_amap_key
-DASHSCOPE_API_KEY=your_dashscope_key
-JWT_SECRET_KEY=your_random_jwt_secret
+# 数据库（根据实际修改密码）
+DATABASE_URL=postgresql+asyncpg://travel_planner:your_password@localhost:5432/travel_planner
+
+# LLM（DashScope 或 DeepSeek 二选一）
+LLM_API_KEY=your_llm_api_key
+LLM_PROVIDER=dashscope
+LLM_MODEL=qwen-plus
+LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+
+# 高德地图
+AMAP_API_KEY=your_amap_web_service_key
+VITE_AMAP_KEY=your_amap_js_api_key
+
+# 安全
+JWT_SECRET_KEY=generate_a_random_secret_here
 ```
 
-### 2. Start Services
+> 切换 DeepSeek：在管理后台或 `.env` 中设置 `LLM_PROVIDER=deepseek`、`LLM_BASE_URL=https://api.deepseek.com/v1`、`LLM_MODEL=deepseek-v4-flash`
+
+### 3. 安装依赖
 
 ```bash
-docker compose up -d                # Postgres + Redis
+# 后端
+cd backend
+uv sync
+
+# 前端
+cd ../frontend
+npm install
 ```
 
-| Service | Port | How to start |
-|---------|------|--------------|
-| PostgreSQL | 5432 | `docker compose up -d postgres` |
-| Redis | 6379 | `docker compose up -d redis` |
-| Backend | 8000 | `cd backend && uv run uvicorn app.main:app --reload` |
-| Frontend | 5173 | `cd frontend && npm run dev` |
-
-The backend and frontend run on the host (not in Docker) so you get hot-reload
-and direct access to logs. See the docker-compose.yml comment for the rationale.
-
-### 3. Access
-
-- **Frontend**: http://localhost:5173
-- **API Docs (Swagger)**: http://localhost:8000/docs
-- **API Docs (ReDoc)**: http://localhost:8000/redoc
-- **Health Check**: `curl http://localhost:8000/health`
-
-### 4. Stop
+### 4. 启动服务
 
 ```bash
-docker compose down          # Stop infra services
-docker compose down -v       # Stop and remove data
-# Ctrl-C to stop backend/frontend
+# 后端（终端1）
+cd backend
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 前端（终端2）
+cd frontend
+npm run dev
 ```
 
-## 📖 API Overview
+### 5. 访问
 
-### Authentication
+| 服务 | 地址 |
+|------|------|
+| 前端 | http://localhost:5173 |
+| API 文档 (Swagger) | http://localhost:8000/docs |
+| 健康检查 | http://localhost:8000/health |
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/auth/register` | Register new user |
-| POST | `/api/v1/auth/login` | Login, get JWT token |
+## API 概览
 
-### Agent Chat (SSE)
+### 认证
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/agent/chat` | Chat with AI agent (Server-Sent Events) |
+| 方法 | 端点 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/api/v1/auth/register` | 无 | 注册 |
+| POST | `/api/v1/auth/login` | 无 | 登录，返回 JWT |
 
-### POI Search
+### Agent 对话（SSE 流式）
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/poi/search` | Search POIs with filters |
+| 方法 | 端点 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/api/v1/agent/chat` | 可选 | 发送消息，SSE 流式返回 |
 
-### Trip Management
+### POI 搜索
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/trips` | Create trip |
-| GET | `/api/v1/trips` | List user trips |
-| GET | `/api/v1/trips/{id}` | Get trip detail |
-| PUT | `/api/v1/trips/{id}` | Update trip |
-| DELETE | `/api/v1/trips/{id}` | Delete trip |
+| 方法 | 端点 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/api/v1/poi/search` | 无 | 按城市/类别/关键词/评分搜索 |
 
-All trip endpoints require JWT authentication (`Authorization: Bearer <token>`).
+### 行程管理
 
-## 🧪 Demo
+| 方法 | 端点 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/api/v1/trips` | 需要 | 行程列表 |
+| POST | `/api/v1/trips` | 需要 | 创建行程 |
+| GET | `/api/v1/trips/{id}` | 需要 | 行程详情（含日程+POI） |
+| PUT | `/api/v1/trips/{id}` | 需要 | 修改行程 |
+| DELETE | `/api/v1/trips/{id}` | 需要 | 删除行程 |
 
-See [docs/demo-script.md](docs/demo-script.md) for 5 test scenarios:
+### 会话管理
 
-1. Basic trip planning ("帮我规划杭州3日游")
-2. POI search ("成都附近有什么好吃的")
-3. Multi-turn conversation (refine preferences)
-4. Trip detail view
-5. Error handling (network failure)
+| 方法 | 端点 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/api/v1/chat-sessions` | 需要 | 会话列表 |
+| GET | `/api/v1/chat-sessions/{thread_id}` | 需要 | 会话详情 |
+| PATCH | `/api/v1/chat-sessions/{thread_id}` | 需要 | 修改标题 |
+| DELETE | `/api/v1/chat-sessions/{thread_id}` | 需要 | 删除会话 |
 
-## 📚 Documentation
+### 管理后台
 
-- [User Manual](docs/user-manual.md) — Complete user guide
-- [Demo Script](docs/demo-script.md) — Test scenarios for demo
-- [Design Document](docs/superpowers/specs/2026-06-29-ai-travel-planner-design.md) — System design
+| 方法 | 端点 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/api/v1/admin/check` | Admin | 验证管理员 |
+| GET/PUT | `/api/v1/admin/config` | Admin | 读取/更新配置 |
+| GET | `/api/v1/admin/users` | Admin | 用户列表 |
+| PATCH/DELETE | `/api/v1/admin/users/{id}` | Admin | 修改/删除用户 |
+| GET | `/api/v1/admin/stats` | Admin | 数据统计 |
+| GET/DELETE | `/api/v1/admin/trips/{id}` | Admin | 行程管理 |
+| GET | `/api/v1/admin/pois` | Admin | POI 列表 |
+| GET/DELETE | `/api/v1/admin/sessions/{id}` | Admin | 会话管理 |
 
-## 🔒 Security
+## 使用流程
 
-- JWT-based authentication with configurable expiration
-- Password hashing (bcrypt)
-- CORS restricted to frontend origin
-- No hardcoded secrets (all via environment variables)
-- Input validation on all API endpoints
+1. **注册/登录** — 右上角登录按钮
+2. **发起规划** — 输入"帮我规划杭州三日游，喜欢历史文化"
+3. **查看结果** — 右侧地图实时标注 POI + 绘制路线，左侧对话展示行程
+4. **调整方案** — 继续对话调整（"第二天换一个博物馆"）
+5. **地图选点** — 首页搜索 POI → 勾选感兴趣的点 → 发送规划请求
+6. **管理后台** — 管理员账号访问 `/admin`，配置 LLM 和高德 Key
 
-## 📄 License
+## 管理后台
+
+侧边栏导航：模型配置 → 高德地图 → 用户管理 → 数据管理 → 数据库
+
+- **模型配置**：切换 LLM 供应商（DashScope / DeepSeek）、选择模型、修改 API Key。**修改后立即生效，无需重启**
+- **高德地图**：独立管理后端 AMAP_API_KEY 和前端 VITE_AMAP_KEY
+- **用户管理**：查看所有用户、删除用户
+- **数据管理**：统计面板 + 浏览行程/POI/会话
+
+## SSE 事件类型
+
+Agent 对话接口通过 SSE 推送以下 20 种事件类型：
+
+| 类别 | 事件类型 |
+|------|---------|
+| 生命周期 | `thinking`, `text`, `done`, `error`, `progress` |
+| 工具 | `tool_calling` |
+| 地图 | `poi_result`, `route_result`, `candidates_ready` |
+| 规划流水线 | `intent_detected`, `searching`, `scoring`, `clustering`, `day_routing`, `routing`, `day_routed`, `plan_summary` |
+| 验证 | `critic_review`, `critic_result`, `validating` |
+
+## 演示
+
+参见 [docs/demo-script.md](docs/demo-script.md) 获取演示测试场景。
+
+## 文档
+
+- [可行性研究报告](docs/reports/01-可行性研究报告.md)
+- [需求分析报告](docs/reports/02-需求分析报告.md)
+- [概要设计报告](docs/reports/03-概要设计报告.md)
+- [详细设计报告](docs/reports/04-详细设计报告.md)
+- [数据库设计报告](docs/reports/05-数据库设计报告.md)
+- [用户手册](docs/user-manual.md)
+
+## 安全
+
+- JWT 认证（HS256），可配置过期时间
+- 密码 bcrypt 哈希存储
+- API Key 通过环境变量管理，管理后台掩码显示
+- 滑动窗口速率限制（Agent 20次/分钟，认证 10次/分钟）
+- 配置白名单保护（仅允许更新安全的可热重载项）
+- CORS 限制允许来源
+
+## License
 
 MIT
