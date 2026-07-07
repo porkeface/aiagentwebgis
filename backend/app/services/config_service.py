@@ -22,6 +22,9 @@ _SECRET_KEYS = {
     "JWT_SECRET_KEY", "DB_PASSWORD", "VITE_AMAP_KEY",
 }
 
+# Keys that trigger AmapService singleton reload on hot-update.
+_AMAP_RELOAD_KEYS = frozenset({"AMAP_API_KEY"})
+
 # Keys that require a backend restart when changed (persistent connections).
 _RESTART_KEYS = {
     "DATABASE_URL", "REDIS_URL", "JWT_SECRET_KEY",
@@ -193,6 +196,12 @@ def update_config(updates: dict[str, str]) -> dict[str, Any]:
             continue
         if hasattr(settings, attr):
             setattr(settings, attr, value)
+
+    # If AMAP_API_KEY changed, drop the AmapService singleton so the next
+    # request picks up the new key without a process restart.
+    if any(k in _AMAP_RELOAD_KEYS for k in accepted):
+        from agent.tools import reload_amap  # noqa: PLC0415
+        reload_amap()
 
     return {
         "updated": list(accepted.keys()),

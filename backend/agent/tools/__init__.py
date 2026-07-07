@@ -39,6 +39,16 @@ def get_amap() -> AmapService:
     return _amap_instance
 
 
+def reload_amap() -> None:
+    """Drop the AmapService singleton so the next call picks up the new key.
+
+    Call after hot-updating AMAP_API_KEY via the admin panel.
+    The old instance is discarded — its httpx client will be GC'd.
+    """
+    global _amap_instance  # noqa: PLW0603
+    _amap_instance = None
+
+
 async def close_amap() -> None:
     """Close the AmapService singleton's HTTP client."""
     global _amap_instance  # noqa: PLW0603
