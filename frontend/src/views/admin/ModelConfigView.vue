@@ -16,10 +16,9 @@ const providerOptions = [
 ]
 
 const dashscopeModels = [
-  { label: 'Qwen-Plus (推荐)', value: 'qwen-plus' },
-  { label: 'Qwen-Max', value: 'qwen-max' },
-  { label: 'Qwen-Turbo', value: 'qwen-turbo' },
-  { label: 'Qwen-Flash (轻量)', value: 'qwen-flash' },
+  { label: 'Qwen3.7-Max (旗舰)', value: 'qwen3.7-max' },
+  { label: 'Qwen3.7-Plus', value: 'qwen3.7-plus' },
+  { label: 'Qwen3.6-Flash (轻量)', value: 'qwen3.6-flash' },
 ]
 
 const deepseekModels = [
