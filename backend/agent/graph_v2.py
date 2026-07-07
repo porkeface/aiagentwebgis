@@ -624,6 +624,48 @@ async def planning_pipeline_node(
     # ── Step 4: Route each day IN PARALLEL (semaphore=3 for Amap QPS limit) ──
     from agent.tools.submit_plan import route_one_day
 
+    # ── Chain-linked day ordering ────────────────────────────────────────────
+    # Default geo_partition order is "nearest centroid to city center = Day 1".
+    # That ignores cross-day continuity: Day N should end near where Day N+1
+    # begins.  Re-sort clusters in a greedy chain: start at city center →
+    # nearest cluster centroid = Day 1, then Day N+1 = nearest centroid to
+    # Day N's *last* POI.  Pure haversine — zero API calls.
+    if len(clusters) >= 2:
+        import math as _math
+        def _haversine_km(lat1, lng1, lat2, lng2):
+            r = 6371.0; dlat = _math.radians(lat2-lat1); dlng = _math.radians(lng2-lng1)
+            a = _math.sin(dlat/2)**2 + _math.cos(_math.radians(lat1))*_math.cos(_math.radians(lat2))*_math.sin(dlng/2)**2
+            return r*2*_math.atan2(_math.sqrt(a),_math.sqrt(1-a))
+        def _cluster_last_poi(c):
+            pois = c.get("pois", [])
+            if not pois: return None
+            p = pois[-1]; return (p.get("lat",0), p.get("lng",0))
+        ordered: list[dict[str, Any]] = []
+        remaining = list(clusters)
+        # Start from city center
+        cur_lat, cur_lng = center_lat, center_lng
+        while remaining:
+            best = min(
+                remaining,
+                key=lambda c: _haversine_km(
+                    cur_lat, cur_lng,
+                    sum(p.get("lat",0) for p in c.get("pois",[]))/max(len(c.get("pois",[])),1),
+                    sum(p.get("lng",0) for p in c.get("pois",[]))/max(len(c.get("pois",[])),1),
+                ),
+            )
+            remaining.remove(best)
+            ordered.append(best)
+            # Next day starts from this day's last POI
+            tail = _cluster_last_poi(best)
+            if tail:
+                cur_lat, cur_lng = tail
+        # Re-number days
+        for i, c in enumerate(ordered):
+            c["day"] = i + 1
+        clusters = ordered
+        logger.info("Chain-linked cluster order: %s",
+                    [c.get("day") for c in clusters])
+
     _route_sem = asyncio.Semaphore(3)  # Amap allows max 3 concurrent
 
     async def _route_day(cluster, idx):
@@ -644,6 +686,80 @@ async def planning_pipeline_node(
     if not daily_plans:
         writer({"type": "error", "data": {"message": "未能生成行程计划"}})
         return {"messages": [AIMessage(content="抱歉，行程规划失败，请重试。")]}
+
+    # ── Cross-day boundary swap: if Day N's last POI is closer to Day N+1's ──
+    # cluster than to Day N's own, move it.  Symmetrically for Day N+1's first
+    # POI.  This fixes "route passes right by this POI but schedules it for
+    # tomorrow." Single-pass, pure haversine — zero API overhead.
+    if len(daily_plans) >= 2:
+        from agent.tools.poi_dedup import haversine_m as _h
+        for i in range(len(daily_plans) - 1):
+            dp_a = daily_plans[i]
+            dp_b = daily_plans[i + 1]
+            pois_a: list[dict[str, Any]] = dp_a.get("pois", [])
+            pois_b: list[dict[str, Any]] = dp_b.get("pois", [])
+            if len(pois_a) < 2 or len(pois_b) < 2:
+                continue
+
+            # Day N's last POI → check if closer to Day N+1
+            tail = pois_a[-1]
+            tlng, tlat = tail.get("lng", 0), tail.get("lat", 0)
+            if isinstance(tlng, (int, float)) and isinstance(tlat, (int, float)):
+                own_clat = sum(p.get("lat", 0) for p in pois_a[:-1]) / max(len(pois_a) - 1, 1)
+                own_clng = sum(p.get("lng", 0) for p in pois_a[:-1]) / max(len(pois_a) - 1, 1)
+                dist_own = _h(tlng, tlat, own_clng, own_clat)
+                dist_next = min(_h(tlng, tlat, p.get("lng", 0), p.get("lat", 0)) for p in pois_b)
+                if dist_next < dist_own * 0.5:
+                    logger.info("Boundary swap: '%s' day %d → day %d",
+                                tail.get("name", "?"), dp_a.get("day"), dp_b.get("day"))
+                    moved = pois_a.pop()
+                    pois_b.insert(0, moved)
+
+            # Day N+1's first POI → check if closer to Day N
+            head = pois_b[0]
+            hlng, hlat = head.get("lng", 0), head.get("lat", 0)
+            if isinstance(hlng, (int, float)) and isinstance(hlat, (int, float)):
+                own_clat = sum(p.get("lat", 0) for p in pois_b[1:]) / max(len(pois_b) - 1, 1)
+                own_clng = sum(p.get("lng", 0) for p in pois_b[1:]) / max(len(pois_b) - 1, 1)
+                dist_own = _h(hlng, hlat, own_clng, own_clat)
+                dist_prev = min(_h(hlng, hlat, p.get("lng", 0), p.get("lat", 0)) for p in pois_a)
+                if dist_prev < dist_own * 0.5 and len(pois_a) > 3:
+                    logger.info("Boundary swap: '%s' day %d → day %d",
+                                head.get("name", "?"), dp_b.get("day"), dp_a.get("day"))
+                    moved = pois_b.pop(0)
+                    pois_a.append(moved)
+
+    # ── Re-route swapped days (only if boundary swap changed plans) ──
+    # Compare original POI IDs: if any day's POI set changed, re-route it.
+    if len(daily_plans) >= 2:
+        import itertools as _it
+        _reroute = []
+        for dp in daily_plans:
+            day_pois = dp.get("pois", [])
+            if not day_pois:
+                continue
+            current_ids = {str(p.get("poi_id", p.get("id", ""))) for p in day_pois}
+            # The route_one_day already sorted + time_slot; we can detect change
+            # by checking if polyline is empty or segments are missing
+            if not dp.get("segments") or not dp.get("polyline"):
+                _reroute.append(dp)
+            else:
+                # Check if ordered POIs match original routing order
+                ordered_ids = [str(p.get("poi_id", p.get("id", ""))) for p in day_pois]
+                seg_count = len(dp.get("segments", []))
+                expected_segs = len(day_pois) - 1
+                if seg_count != expected_segs:
+                    _reroute.append(dp)
+        if _reroute:
+            logger.info("Re-routing %d days after boundary swap", len(_reroute))
+            _reroute_sem = asyncio.Semaphore(3)
+            async def _reroute_one(dp):
+                async with _reroute_sem:
+                    return await route_one_day({"day": dp["day"], "pois": dp["pois"]})
+            rerouted = await asyncio.gather(*[_reroute_one(dp) for dp in _reroute], return_exceptions=True)
+            for orig, new in zip(_reroute, rerouted):
+                if new is not None and not isinstance(new, Exception):
+                    orig.update(new)
 
     # ── Step 5: Validate (Critic skipped — saves ~15s, marginal value) ────
     from agent.tools.submit_plan import submit_plan as submit_plan_fn
