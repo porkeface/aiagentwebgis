@@ -37,6 +37,8 @@ _ALLOWED_UPDATE_KEYS: frozenset[str] = frozenset({
     "LLM_PROVIDER",
     "LLM_MODEL",
     "LLM_BASE_URL",
+    "AMAP_API_KEY",
+    "VITE_AMAP_KEY",
     "APP_ENV",
     "DEBUG",
 })
