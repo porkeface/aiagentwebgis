@@ -48,6 +48,23 @@ def _euclidean_sq_for_poi(poi: dict[str, Any], clat: float, clng: float) -> floa
     return (poi.get("lat", 0) - clat) ** 2 + (poi.get("lng", 0) - clng) ** 2
 
 
+def _min_dist_to_cluster(poi: dict[str, Any], cluster_pois: list[dict[str, Any]]) -> float:
+    """Minimum squared Euclidean distance from a POI to ANY member of the cluster.
+
+    This is the route-proximity measure: a POI that is close to *any* point
+    on a day's route belongs to that day.  Using min-of-pairwise is a cheap
+    proxy for true polyline proximity — zero API calls, no time impact.
+    """
+    plat = poi.get("lat", 0)
+    plng = poi.get("lng", 0)
+    best = float("inf")
+    for cp in cluster_pois:
+        d = (cp.get("lat", 0) - plat) ** 2 + (cp.get("lng", 0) - plng) ** 2
+        if d < best:
+            best = d
+    return best
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -541,11 +558,9 @@ async def planning_pipeline_node(
                 # empty cluster: take first POI from donor
                 c["pois"] = [donor_pois.pop()]
                 continue
-            clat = sum(p.get("lat", 0) for p in c_pois) / len(c_pois)
-            clng = sum(p.get("lng", 0) for p in c_pois) / len(c_pois)
             best = min(
                 range(len(donor_pois)),
-                key=lambda i: _euclidean_sq_for_poi(donor_pois[i], clat, clng),
+                key=lambda i: _min_dist_to_cluster(donor_pois[i], c_pois),
             )
             c["pois"].append(donor_pois.pop(best))
 
@@ -572,11 +587,9 @@ async def planning_pipeline_node(
                     receiver["pois"] = [donor_pois.pop()]
                     changed = True
                     continue
-                clat = sum(p.get("lat", 0) for p in recv_pois) / len(recv_pois)
-                clng = sum(p.get("lng", 0) for p in recv_pois) / len(recv_pois)
                 best = min(
                     range(len(donor_pois)),
-                    key=lambda i: _euclidean_sq_for_poi(donor_pois[i], clat, clng),
+                    key=lambda i: _min_dist_to_cluster(donor_pois[i], recv_pois),
                 )
                 receiver["pois"].append(donor_pois.pop(best))
                 changed = True
@@ -584,32 +597,29 @@ async def planning_pipeline_node(
             break
 
     # ── Nearby-POI backfill: pull in high-score POIs that didn't make the ──
-    # top_n cut but are very close to an under-filled day's cluster.  This
-    # catches "route passes right by this great spot but didn't include it."
+    # top_n cut but are very close to an under-filled day's route path.
+    # Uses min-distance-to-any-cluster-member as a proxy for route proximity.
     if len(scored) > top_n:
-        leftover = scored[top_n:]
+        leftover = list(scored[top_n:])
         for c in clusters:
             c_pois = c.get("pois", [])
             if len(c_pois) >= max_per_day:
                 continue
             if not c_pois:
                 continue
-            clat = sum(p.get("lat", 0) for p in c_pois) / len(c_pois)
-            clng = sum(p.get("lng", 0) for p in c_pois) / len(c_pois)
-            # Find the nearest leftover POI within 3km of the cluster centroid
+            # Find the nearest leftover POI within 3km of any cluster member
             best_idx, best_dist = -1, float("inf")
             for i, p in enumerate(leftover):
                 if not isinstance(p.get("lng"), (int, float)):
                     continue
                 if not isinstance(p.get("lat"), (int, float)):
                     continue
-                d = _euclidean_sq_for_poi(p, clat, clng)
+                d = _min_dist_to_cluster(p, c_pois)
                 if d < best_dist:
                     best_dist = d
                     best_idx = i
-            # ~3km in lat/lng squared ≈ 0.0009 (rough)
             if best_idx >= 0 and best_dist < 0.0009:
-                c_pois.append(dict(leftover.pop(best_idx)))
+                c_pois.append(leftover.pop(best_idx))
 
     # ── Step 4: Route each day IN PARALLEL (semaphore=3 for Amap QPS limit) ──
     from agent.tools.submit_plan import route_one_day
