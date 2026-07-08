@@ -56,6 +56,8 @@ aiagentwebgis/
 │   │   ├── types/              # TypeScript 类型定义
 │   │   └── utils/              # 工具函数（常量/格式化/高德加载）
 │   └── package.json
+├── scripts/
+│   └── init_admin.py           # 初始化管理员账户
 ├── docs/
 │   ├── reports/                # 五份设计报告
 │   │   ├── 01-可行性研究报告.md
@@ -142,11 +144,25 @@ cd frontend
 npm run dev
 ```
 
-### 5. 访问
+### 5. 初始化管理员账户
+
+```bash
+cd backend
+uv run python scripts/init_admin.py
+```
+
+默认创建 `admin` / `admin` 账户（拥有管理员权限）。自定义：
+
+```bash
+uv run python scripts/init_admin.py 用户名 密码
+```
+
+### 6. 访问
 
 | 服务 | 地址 |
 |------|------|
 | 前端 | http://localhost:5173 |
+| 管理后台 | http://localhost:5173/admin（用 admin 账户登录后访问） |
 | API 文档 (Swagger) | http://localhost:8000/docs |
 | 健康检查 | http://localhost:8000/health |
 
